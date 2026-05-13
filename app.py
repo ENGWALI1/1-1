@@ -1,72 +1,77 @@
 import os
 import json
 from flask import Flask, request
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 
-# اللوغ
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# التوكن
 TOKEN = os.environ['BOT_TOKEN']
-print(f"✅ TOKEN loaded")
+HOSTNAME = os.environ['RENDER_EXTERNAL_HOSTNAME']
 
-# الكتاب
+print("🚀 Bot starting...")
 with open('student_textbook.json', 'r', encoding='utf-8') as f:
     BOOK = json.load(f)
-print(f"✅ BOOK loaded: {len(BOOK)} pages")
+print(f"📚 Loaded {len(BOOK)} pages")
 
-# البوت
 application = Application.builder().token(TOKEN).build()
 
-# الأزرار
-KEYBOARD = [['📖 كتاب الطالب']]
+menu = ReplyKeyboardMarkup([["📖 كتاب الطالب"]], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("👤 /start received")
     await update.message.reply_text(
-        f"📚 كتاب الطالب: {len(BOOK)} صفحة",
-        reply_markup={'keyboard': KEYBOARD, 'resize_keyboard': True}
+        f"🎉 مرحباً!\n📚 {len(BOOK)} صفحة متاحة\nاضغط 👇",
+        reply_markup=menu
     )
 
-async def ask_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['waiting'] = True
-    await update.message.reply_text("📄 رقم الصفحة (1-80):")
+async def handle_book(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("📖 Book button clicked")
+    context.user_data['waiting_page'] = True
+    await update.message.reply_text("📄 أرسل رقم الصفحة (1-80):")
 
-async def handle_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get('waiting'):
-        page = update.message.text.strip()
-        if page in BOOK:
-            text = BOOK[page]['content'][:4000]
-            await update.message.reply_text(f"📖 صفحة {page}\n\n{text}")
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    print(f"💬 Received: {text}")
+    
+    if context.user_data.get('waiting_page'):
+        if text in BOOK:
+            content = BOOK[text]['content'][:3000]
+            await update.message.reply_text(f"📖 **صفحة {text}**\n\n{content}")
+            print(f"✅ Sent page {text}")
         else:
-            await update.message.reply_text("❌ صفحة غير موجودة!")
-        context.user_data['waiting'] = False
+            await update.message.reply_text(f"❌ صفحة {text} غير موجودة!")
+        context.user_data['waiting_page'] = False
+    else:
+        await update.message.reply_text("اضغط /start أو 📖 كتاب الطالب", reply_markup=menu)
 
 # إضافة handlers
 application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.Regex("📖 كتاب الطالب"), ask_page))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_page))
+application.add_handler(MessageHandler(filters.Text("📖 كتاب الطالب"), handle_book))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
 @app.route(f'/{TOKEN}', methods=['POST'])
-def webhook_update():
-    update = Update.de_json(request.get_json(), application.bot)
-    application.process_update(update)
-    return 'ok'
+def webhook():
+    try:
+        update = Update.de_json(request.get_json(), application.bot)
+        application.process_update(update)
+        return "OK"
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return "Error", 500
 
 @app.route('/')
-def index():
-    return f'🤖 Bot OK | Pages: {len(BOOK)}'
+def home():
+    return f"<h1>🤖 البوت شغال!</h1><p>📚 {len(BOOK)} صفحة</p><a href='/set'>Set Webhook</a>"
 
 @app.route('/set')
 def set_webhook():
-    url = f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/{TOKEN}"
+    url = f"https://{HOSTNAME}/{TOKEN}"
     application.bot.set_webhook(url)
-    return f'Webhook: {url}'
+    return f"<h1>✅ Webhook set!</h1><p>{url}</p>"
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
