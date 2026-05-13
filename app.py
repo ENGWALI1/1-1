@@ -1,7 +1,8 @@
 import os
 import json
 import zipfile
-from flask import Flask, request, jsonify
+import shutil
+from flask import Flask, request
 import requests
 
 app = Flask(__name__)
@@ -10,59 +11,90 @@ TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
 HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')
 
-# ==================== فك ضغط وقراءة الملفات ====================
-def extract_and_load(zip_path):
-    """فك ضغط الملف وقراءة جميع ملفات JSON"""
+# ==================== فك ضغط قوي يبحث عن كل JSON ====================
+def extract_all_json(zip_path):
+    """يفك الضغط ويجمع كل محتوى JSON من أي مجلد فرعي"""
     pages = {}
-    extract_dir = "student_pages_temp"
+    extract_dir = "extracted_temp"
     
-    # فك الضغط
+    # تنظيف المجلد القديم
     if os.path.exists(extract_dir):
-        import shutil
         shutil.rmtree(extract_dir)
     
+    # فك الضغط
+    print(f"📦 فك ضغط {zip_path}...")
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     
-    # البحث عن جميع ملفات JSON
+    # البحث عن كل ملف JSON
+    json_files = []
     for root, dirs, files in os.walk(extract_dir):
         for file in files:
             if file.endswith('.json'):
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        # استخراج رقم الصفحة من اسم الملف
-                        page_num = file.replace('page_', '').replace('.json', '')
-                        
-                        # تخزين جميع البيانات (الأصلي، الترجمة، التمارين)
-                        pages[page_num] = {
-                            "title": data.get('title', f'صفحة {page_num}'),
-                            "content_original": data.get('content_original', data.get('content', '')),
-                            "translation": data.get('translation', ''),
-                            "content_line_by_line": data.get('content_line_by_line', []),
-                            "exercises": data.get('exercises', [])
-                        }
-                except Exception as e:
-                    print(f"خطأ في {file}: {e}")
+                json_files.append(os.path.join(root, file))
+    
+    print(f"📄 وجدت {len(json_files)} ملف JSON")
+    
+    # قراءة كل ملف
+    for file_path in json_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+                # استخراج رقم الصفحة من اسم الملف
+                filename = os.path.basename(file_path)
+                page_num = filename.replace('page_', '').replace('.json', '')
+                
+                # إذا كان الرقم ليس رقماً، حاول استخراجه من المحتوى
+                if not page_num.isdigit():
+                    # ابحث عن أول مفتاح رقمي في البيانات
+                    if isinstance(data, dict):
+                        for key in data.keys():
+                            if str(key).isdigit():
+                                page_num = str(key)
+                                data = data[key]
+                                break
+                
+                # تخزين البيانات (حتى لو لم تكن كاملة)
+                if isinstance(data, dict):
+                    pages[page_num] = {
+                        "title": data.get('title', f'صفحة {page_num}'),
+                        "content_original": data.get('content_original', data.get('content', str(data))),
+                        "translation": data.get('translation', ''),
+                        "content_line_by_line": data.get('content_line_by_line', []),
+                        "exercises": data.get('exercises', [])
+                    }
+                else:
+                    pages[page_num] = {
+                        "title": f'صفحة {page_num}',
+                        "content_original": str(data),
+                        "translation": '',
+                        "content_line_by_line": [],
+                        "exercises": []
+                    }
+                print(f"✅ صفحة {page_num} من {filename}")
+        except Exception as e:
+            print(f"⚠️ خطأ في {file_path}: {e}")
+    
+    # تنظيف المجلد المؤقت
+    shutil.rmtree(extract_dir)
     
     return pages
 
 # تحميل الكتاب من ZIP
 zip_path = 'student_pages.zip'
 if os.path.exists(zip_path):
-    BOOK = extract_and_load(zip_path)
-    print(f"✅ تم تحميل {len(BOOK)} صفحة من {zip_path}")
+    BOOK = extract_all_json(zip_path)
+    print(f"✅ تم تحميل {len(BOOK)} صفحة بنجاح!")
 else:
-    print(f"❌ {zip_path} غير موجود")
+    print(f"❌ الملف {zip_path} غير موجود!")
     BOOK = {}
 
 # تخزين حالة المستخدمين
-user_states = {}  # {'user_id': {'book': 'student', 'page': '10', 'mode': 'original'}}
+user_states = {}
 
 # ==================== دوال مساعدة ====================
 def format_line_by_line(lines):
-    """تنسيق الترجمة سطراً بسطر"""
     if not lines:
         return "لا توجد ترجمة سطرية"
     result = ""
@@ -73,30 +105,16 @@ def format_line_by_line(lines):
     return result
 
 def format_exercises(exercises):
-    """تنسيق حلول التمارين"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
-    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for i, ex in enumerate(exercises, 1):
-        ex_type = ex.get('type', '')
-        if ex_type == 'speaking':
-            questions = ex.get('questions', [])
-            answers = ex.get('answers', [])
-            result += f"**🗣️ نشاط المحادثة {i}:**\n"
-            for j, q in enumerate(questions):
-                result += f"**سؤال {j+1}:** {q}\n"
-                if j < len(answers):
-                    result += f"✅ {answers[j]}\n"
-            result += "\n"
-        else:
-            text = ex.get('text', ex.get('question', 'سؤال'))
-            answer = ex.get('answer', '---')
-            result += f"**{i}. {text}**\n✅ {answer}\n\n"
+        text = ex.get('text', ex.get('question', 'سؤال'))
+        answer = ex.get('answer', '---')
+        result += f"**{i}. {text}**\n✅ {answer}\n\n"
     return result
 
 def get_page_buttons(page_num, mode):
-    """أزرار التنقل والترجمة وحل التمارين"""
     buttons = []
     
     # أزرار التنقل
@@ -120,15 +138,13 @@ def get_page_buttons(page_num, mode):
     if feature_buttons:
         buttons.append(feature_buttons)
     
-    # زر القائمة الرئيسية
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
-    
     return {"inline_keyboard": buttons}
 
 # ==================== إعداد Webhook ====================
 @app.route('/')
 def home():
-    return f"<h1>🤖 @withali91_bot</h1><p>{len(BOOK)} صفحة</p>"
+    return f"<h1>🤖 @withali91_bot</h1><p>{len(BOOK)} صفحة تم تحميلها</p>"
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
@@ -136,7 +152,7 @@ def webhook():
     if 'message' not in data and 'callback_query' not in data:
         return 'OK'
     
-    # معالجة الضغط على الأزرار التفاعلية (InlineKeyboard)
+    # معالجة الأزرار التفاعلية
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -144,14 +160,13 @@ def webhook():
         callback_data = callback['data']
         user_id = callback['from']['id']
         
-        print(f"🔘 {callback_data} from {user_id}")
+        print(f"🔘 {callback_data}")
         
-        # القائمة الرئيسية
         if callback_data == 'main_menu':
             keyboard = {"keyboard": [["📖 كتاب الطالب"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً بك!\n📚 {len(BOOK)} صفحة\nاضغط 📖 كتاب الطالب",
+                "text": f"🎉 مرحباً!\n📚 {len(BOOK)} صفحة\nاضغط 📖 كتاب الطالب",
                 "reply_markup": keyboard
             })
             requests.post(URL + '/deleteMessage', json={
@@ -160,7 +175,6 @@ def webhook():
             })
             return 'OK'
         
-        # تغيير وضع العرض (أصلي/ترجمة/حلول)
         if callback_data.startswith('mode_'):
             parts = callback_data.split('_')
             mode = parts[1]
@@ -171,17 +185,13 @@ def webhook():
                 if mode == 'original':
                     content = page.get('content_original', 'لا يوجد محتوى')
                 elif mode == 'translated':
-                    if page.get('content_line_by_line'):
-                        content = format_line_by_line(page.get('content_line_by_line', []))
-                    else:
+                    content = format_line_by_line(page.get('content_line_by_line', []))
+                    if not content or content == "لا توجد ترجمة سطرية":
                         content = page.get('translation', 'لا توجد ترجمة')
-                elif mode == 'solved':
-                    content = format_exercises(page.get('exercises', []))
                 else:
-                    content = page.get('content_original', 'لا يوجد محتوى')
+                    content = format_exercises(page.get('exercises', []))
                 
                 title = page.get('title', f'صفحة {page_num}')
-                
                 requests.post(URL + '/editMessageText', json={
                     "chat_id": chat_id,
                     "message_id": message_id,
@@ -190,7 +200,6 @@ def webhook():
                 })
             return 'OK'
         
-        # التنقل بين الصفحات
         if callback_data.startswith('page_'):
             page_num = callback_data.split('_')[1]
             user_state = user_states.get(user_id, {})
@@ -201,17 +210,13 @@ def webhook():
                 if mode == 'original':
                     content = page.get('content_original', 'لا يوجد محتوى')
                 elif mode == 'translated':
-                    if page.get('content_line_by_line'):
-                        content = format_line_by_line(page.get('content_line_by_line', []))
-                    else:
+                    content = format_line_by_line(page.get('content_line_by_line', []))
+                    if not content or content == "لا توجد ترجمة سطرية":
                         content = page.get('translation', 'لا توجد ترجمة')
-                elif mode == 'solved':
-                    content = format_exercises(page.get('exercises', []))
                 else:
-                    content = page.get('content_original', 'لا يوجد محتوى')
+                    content = format_exercises(page.get('exercises', []))
                 
                 title = page.get('title', f'صفحة {page_num}')
-                
                 requests.post(URL + '/editMessageText', json={
                     "chat_id": chat_id,
                     "message_id": message_id,
@@ -229,59 +234,50 @@ def webhook():
         text = data['message'].get('text', '')
         user_id = data['message']['from']['id']
         
-        print(f"📨 {text} from {user_id}")
+        print(f"📨 {text}")
         
-        # أمر /start
         if text == '/start':
             keyboard = {"keyboard": [["📖 كتاب الطالب"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً!\n📚 {len(BOOK)} صفحة\n📖 اضغط على الزر لبدء القراءة\n🔤 الترجمة و 📝 الحلول متوفرة",
+                "text": f"🎉 مرحباً!\n📚 {len(BOOK)} صفحة\nاضغط على الزر لبدء القراءة",
                 "reply_markup": keyboard
             })
         
-        # زر كتاب الطالب
         elif text == "📖 كتاب الطالب":
             user_states[user_id] = {'mode': 'original'}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": "📄 أرسل رقم الصفحة (مثال: 10):"
+                "text": f"📄 أرسل رقم الصفحة (1-{len(BOOK)}):"
             })
         
-        # إذا أرسل المستخدم رقماً
-        elif text.isdigit() and text in BOOK:
-            page = BOOK[text]
-            mode = user_states.get(user_id, {}).get('mode', 'original')
-            
-            if mode == 'original':
-                content = page.get('content_original', 'لا يوجد محتوى')
-            elif mode == 'translated':
-                if page.get('content_line_by_line'):
-                    content = format_line_by_line(page.get('content_line_by_line', []))
-                else:
-                    content = page.get('translation', 'لا توجد ترجمة')
-            elif mode == 'solved':
-                content = format_exercises(page.get('exercises', []))
-            else:
-                content = page.get('content_original', 'لا يوجد محتوى')
-            
-            title = page.get('title', f'صفحة {text}')
-            
-            requests.post(URL + '/sendMessage', json={
-                "chat_id": chat_id,
-                "text": f"📖 {title}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                "reply_markup": get_page_buttons(text, mode)
-            })
-            user_states[user_id] = {'mode': mode, 'page': text}
-        
-        # رقم غير موجود
         elif text.isdigit():
-            requests.post(URL + '/sendMessage', json={
-                "chat_id": chat_id,
-                "text": f"❌ الصفحة {text} غير موجودة\n📚 الصفحات المتوفرة: 1 إلى {len(BOOK)}"
-            })
+            if text in BOOK:
+                page = BOOK[text]
+                mode = user_states.get(user_id, {}).get('mode', 'original')
+                
+                if mode == 'original':
+                    content = page.get('content_original', 'لا يوجد محتوى')
+                elif mode == 'translated':
+                    content = format_line_by_line(page.get('content_line_by_line', []))
+                    if not content or content == "لا توجد ترجمة سطرية":
+                        content = page.get('translation', 'لا توجد ترجمة')
+                else:
+                    content = format_exercises(page.get('exercises', []))
+                
+                title = page.get('title', f'صفحة {text}')
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": f"📖 {title}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
+                    "reply_markup": get_page_buttons(text, mode)
+                })
+                user_states[user_id] = {'mode': mode, 'page': text}
+            else:
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": f"❌ الصفحة {text} غير موجودة\n📚 الصفحات المتوفرة: 1 إلى {len(BOOK)}"
+                })
         
-        # أي نص آخر
         else:
             keyboard = {"keyboard": [["📖 كتاب الطالب"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
