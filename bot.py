@@ -1,5 +1,9 @@
 import os
 import json
+import asyncio
+import sys
+if sys.version_info >= (3, 12):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from flask import Flask
 from threading import Thread
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
