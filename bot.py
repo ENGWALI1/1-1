@@ -19,29 +19,35 @@ Thread(target=run_web).start()
 TOKEN = os.environ.get("BOT_TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ==================== فك ضغط الملفات (نسخة مجربة) ====================
+# ==================== فك ضغط الملفات (مع تشخيص دقيق) ====================
 def extract_zip(zip_name):
     zip_path = os.path.join(BASE_DIR, zip_name)
     extract_to = os.path.join(BASE_DIR, zip_name.replace(".zip", ""))
+    print(f"📂 محاولة فك: {zip_path} -> {extract_to}")
     
     if os.path.exists(zip_path):
         print(f"📦 جاري فك {zip_name}...")
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(extract_to)
-        print(f"✅ تم فك {zip_name} إلى {extract_to}")
-        return True
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(extract_to)
+            print(f"✅ تم فك {zip_name}")
+            print(f"📁 محتويات المجلد بعد الفك: {os.listdir(extract_to) if os.path.exists(extract_to) else 'المجلد غير موجود!'}")
+            return True
+        except Exception as e:
+            print(f"❌ خطأ أثناء فك {zip_name}: {e}")
+            return False
     else:
         print(f"❌ {zip_name} غير موجود")
         return False
 
-# فك ضغط ملف الطالب فقط (لأن الباقي غير موجود)
+# فك ضغط الملفات
 extract_zip("student_pages.zip")
 
 # ==================== تحميل صفحات كتاب الطالب ====================
 STUDENT_PAGES = {}
 student_folder = os.path.join(BASE_DIR, "student_pages")
+print(f"\n🔍 البحث عن الصفحات في: {student_folder}")
 
-print(f"📂 البحث في المجلد: {student_folder}")
 if os.path.exists(student_folder):
     print(f"📄 الملفات الموجودة: {os.listdir(student_folder)}")
     for filename in os.listdir(student_folder):
@@ -50,20 +56,18 @@ if os.path.exists(student_folder):
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    # استخراج رقم الصفحة
                     page_num = filename.replace(".json", "").replace("page_", "")
-                    # استخراج المحتوى
                     if isinstance(data, dict):
                         content = data.get("content_original", data.get("content", str(data)))
                     else:
                         content = str(data)
                     STUDENT_PAGES[page_num] = content
-                    print(f"✅ صفحة {page_num}")
+                    print(f"  ✅ صفحة {page_num}")
             except Exception as e:
-                print(f"⚠️ خطأ في {filename}: {e}")
-    print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة")
+                print(f"  ⚠️ خطأ في {filename}: {e}")
+    print(f"\n✅ تم تحميل {len(STUDENT_PAGES)} صفحة من كتاب الطالب")
 else:
-    print(f"❌ مجلد {student_folder} غير موجود!")
+    print(f"❌ مجلد {student_folder} غير موجود! فشل فك الضغط.")
 
 # ==================== القائمة ====================
 menu = ReplyKeyboardMarkup([
