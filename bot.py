@@ -18,7 +18,30 @@ Thread(target=run_web).start()
 # ==================== التوكن ====================
 TOKEN = os.environ.get("BOT_TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ==================== تشخيص المسارات والملفات ====================
+print("="*50)
+print("📂 بدء فحص البيئة...")
+print(f"📁 المسار الأساسي: {BASE_DIR}")
 
+print("\n📦 فحص الملفات المضغوطة:")
+for zip_name in ["student_pages.zip", "activity_pages.zip", "lessons.zip", "tests.zip"]:
+    zip_path = os.path.join(BASE_DIR, zip_name)
+    if os.path.exists(zip_path):
+        print(f"  ✅ {zip_name} موجود (حجمه: {os.path.getsize(zip_path)} bytes)")
+    else:
+        print(f"  ❌ {zip_name} غير موجود")
+
+print("\n📂 فحص المجلدات بعد فك الضغط:")
+for folder in ["student_pages", "activity_pages", "lessons", "tests"]:
+    folder_path = os.path.join(BASE_DIR, folder)
+    if os.path.exists(folder_path):
+        files = os.listdir(folder_path)
+        print(f"  ✅ مجلد {folder} موجود (عدد الملفات: {len(files)})")
+        if files:
+            print(f"     - أول 3 ملفات: {files[:3]}")
+    else:
+        print(f"  ❌ مجلد {folder} غير موجود")
+print("="*50)
 # ==================== فك ضغط الملفات ====================
 print("📦 جاري فك ضغط الملفات...")
 for zip_name in ["student_pages.zip", "activity_pages.zip"]:
