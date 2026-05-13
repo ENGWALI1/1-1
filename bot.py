@@ -1,6 +1,5 @@
 import os
 import json
-import zipfile
 from flask import Flask
 from threading import Thread
 from telegram import Update, ReplyKeyboardMarkup
@@ -19,59 +18,23 @@ Thread(target=run_web).start()
 TOKEN = os.environ.get("BOT_TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ==================== فك ضغط الملفات ====================
-def extract_zip(zip_name):
-    zip_path = os.path.join(BASE_DIR, zip_name)
-    extract_to = os.path.join(BASE_DIR, zip_name.replace(".zip", ""))
-    
-    if os.path.exists(zip_path):
-        print(f"📦 جاري فك {zip_name}...")
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(extract_to)
-        print(f"✅ تم فك {zip_name}")
-        return True
-    return False
-
-extract_zip("student_pages.zip")
-
-# ==================== البحث عن الملفات (حتى لو كانت داخل مجلد فرعي) ====================
-def find_json_files(folder_path):
-    """يبحث عن جميع ملفات JSON في المجلد وأي مجلدات فرعية"""
-    json_files = []
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            if file.endswith(".json"):
-                json_files.append(os.path.join(root, file))
-    return json_files
-
-# ==================== تحميل صفحات كتاب الطالب ====================
+# ==================== تحميل كتاب الطالب ====================
 STUDENT_PAGES = {}
-student_folder = os.path.join(BASE_DIR, "student_pages")
+json_path = os.path.join(BASE_DIR, "student_textbook.json")
 
-if os.path.exists(student_folder):
-    print(f"📂 البحث عن JSON في: {student_folder}")
-    json_files = find_json_files(student_folder)
-    print(f"📄 عدد ملفات JSON التي تم العثور عليها: {len(json_files)}")
-    
-    for filepath in json_files:
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                filename = os.path.basename(filepath)
-                page_num = filename.replace(".json", "").replace("page_", "")
-                
-                if isinstance(data, dict):
-                    content = data.get("content_original", data.get("content", str(data)))
-                else:
-                    content = str(data)
-                STUDENT_PAGES[page_num] = content
-                print(f"  ✅ صفحة {page_num} من {filename}")
-        except Exception as e:
-            print(f"  ⚠️ خطأ في {filepath}: {e}")
-    
+if os.path.exists(json_path):
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for page_num, page_data in data.items():
+            content = page_data.get("content", "لا يوجد محتوى")
+            title = page_data.get("title", f"صفحة {page_num}")
+            STUDENT_PAGES[page_num] = {
+                "title": title,
+                "content": content
+            }
     print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة من كتاب الطالب")
 else:
-    print(f"❌ مجلد {student_folder} غير موجود")
+    print(f"❌ الملف {json_path} غير موجود")
 
 # ==================== القائمة ====================
 menu = ReplyKeyboardMarkup([
@@ -82,30 +45,47 @@ menu = ReplyKeyboardMarkup([
 # ==================== أوامر البوت ====================
 async def start(update, context):
     await update.message.reply_text(
-        f"🎓 مرحباً!\n📚 صفحات الطالب المتوفرة: {len(STUDENT_PAGES)}\n\nاختر من القائمة:",
+        f"🎓 مرحباً بك في البوت!\n"
+        f"📚 عدد صفحات كتاب الطالب: {len(STUDENT_PAGES)}\n\n"
+        f"اختر 📖 كتاب الطالب ثم أرسل رقم الصفحة (1-80)",
         reply_markup=menu
     )
 
 async def student_book(update, context):
     context.user_data["book"] = "student"
-    await update.message.reply_text("📖 أرسل رقم الصفحة")
+    await update.message.reply_text(
+        "📖 أرسل رقم الصفحة (1-80)\n"
+        f"الصفحات المتوفرة: 1 إلى {len(STUDENT_PAGES)}"
+    )
 
 async def show_page(update, context):
     try:
         page = str(int(update.message.text.strip()))
-        if context.user_data.get("book") == "student":
-            if page in STUDENT_PAGES:
-                content = STUDENT_PAGES[page]
-                if len(content) > 4000:
-                    content = content[:4000] + "\n\n... (يوجد محتوى إضافي)"
-                await update.message.reply_text(f"📖 صفحة {page}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}")
-            else:
-                pages_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
-                await update.message.reply_text(f"❌ الصفحة {page} غير موجودة\nالصفحات المتوفرة: {pages_list[:20]}")
+        
+        if context.user_data.get("book") != "student":
+            await update.message.reply_text("❌ اختر 📖 كتاب الطالب أولاً من القائمة")
+            return
+        
+        if page in STUDENT_PAGES:
+            page_data = STUDENT_PAGES[page]
+            content = page_data["content"]
+            title = page_data["title"]
+            
+            # تقسيم النص الطويل
+            if len(content) > 4000:
+                content = content[:4000] + "\n\n... (يوجد محتوى إضافي)"
+            
+            await update.message.reply_text(
+                f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                parse_mode='Markdown'
+            )
         else:
-            await update.message.reply_text("❌ اختر كتاب الطالب أولاً")
+            await update.message.reply_text(
+                f"❌ الصفحة {page} غير موجودة\n"
+                f"الصفحات المتوفرة: 1 إلى {len(STUDENT_PAGES)}"
+            )
     except ValueError:
-        await update.message.reply_text("❌ أرسل رقم صفحة صحيح")
+        await update.message.reply_text("❌ أرسل رقم صفحة صحيح (مثال: 10)")
 
 async def back_home(update, context):
     context.user_data.clear()
