@@ -1,9 +1,5 @@
 import os
 import json
-import asyncio
-import sys
-if sys.version_info >= (3, 12):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from flask import Flask
 from threading import Thread
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
@@ -36,67 +32,60 @@ if os.path.exists(json_path):
                 "title": title,
                 "content": content
             }
-    print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة من كتاب الطالب")
-else:
-    print(f"❌ الملف {json_path} غير موجود")
+    print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة")
 
-# ==================== القائمة الرئيسية (أزرار دائمة) ====================
+# ==================== القائمة الرئيسية (أزرار ثابتة) ====================
 main_menu = ReplyKeyboardMarkup([
     ["📖 كتاب الطالب", "🏠 الرئيسية"]
 ], resize_keyboard=True)
 
-# ==================== دوال مساعدة ====================
+# ==================== دوال الأزرار التفاعلية ====================
 def get_page_buttons(page_num):
-    """أزرار التنقل بين الصفحات"""
     buttons = []
-    nav_buttons = []
+    nav = []
     
     if int(page_num) > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️ السابق", callback_data=f"page_{int(page_num)-1}"))
+        nav.append(InlineKeyboardButton("◀️ السابق", callback_data=f"page_{int(page_num)-1}"))
     if int(page_num) < len(STUDENT_PAGES):
-        nav_buttons.append(InlineKeyboardButton("التالي ▶️", callback_data=f"page_{int(page_num)+1}"))
+        nav.append(InlineKeyboardButton("التالي ▶️", callback_data=f"page_{int(page_num)+1}"))
     
-    if nav_buttons:
-        buttons.append(nav_buttons)
+    if nav:
+        buttons.append(nav)
     
     buttons.append([InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="main_menu")])
     return InlineKeyboardMarkup(buttons)
 
-# ==================== أوامر البوت ====================
+# ==================== الأوامر ====================
 async def start(update, context):
+    """أمر /start"""
     await update.message.reply_text(
-        f"🎓 **مرحباً بك في البوت التعليمي!**\n\n"
-        f"📚 **عدد صفحات كتاب الطالب:** {len(STUDENT_PAGES)}\n\n"
-        f"📖 اضغط على 'كتاب الطالب' ثم أرسل رقم الصفحة،\n"
-        f"أو استخدم الأزرار التفاعلية بعد اختيار الصفحة.",
+        f"🎓 مرحباً بك!\n📚 عدد الصفحات: {len(STUDENT_PAGES)}\n\nاضغط على 📖 كتاب الطالب",
         parse_mode='Markdown',
         reply_markup=main_menu
     )
 
 async def student_book(update, context):
+    """عند الضغط على زر '📖 كتاب الطالب'"""
     context.user_data["book"] = "student"
     await update.message.reply_text(
-        f"📖 **كتاب الطالب**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"أرسل رقم الصفحة من **1** إلى **{len(STUDENT_PAGES)}**\n\n"
-        f"مثال: أرسل `10` لعرض الصفحة 10",
-        parse_mode='Markdown'
+        f"📖 أرسل رقم الصفحة من 1 إلى {len(STUDENT_PAGES)}"
     )
 
 async def show_page(update, context):
+    """عند إرسال رقم صفحة"""
     try:
         page_num = str(int(update.message.text.strip()))
         
         if context.user_data.get("book") != "student":
-            await update.message.reply_text("❌ اضغط على '📖 كتاب الطالب' أولاً")
+            await update.message.reply_text("❌ اضغط على 📖 كتاب الطالب أولاً")
             return
         
         if page_num in STUDENT_PAGES:
-            page_data = STUDENT_PAGES[page_num]
-            content = page_data["content"]
-            title = page_data["title"]
+            content = STUDENT_PAGES[page_num]["content"]
+            title = STUDENT_PAGES[page_num]["title"]
             
             if len(content) > 4000:
-                content = content[:4000] + "\n\n... (يوجد محتوى إضافي)"
+                content = content[:4000] + "\n\n...(يوجد محتوى إضافي)"
             
             await update.message.reply_text(
                 f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
@@ -105,19 +94,18 @@ async def show_page(update, context):
             )
             context.user_data["current_page"] = page_num
         else:
-            await update.message.reply_text(
-                f"❌ الصفحة {page_num} غير موجودة\n"
-                f"الصفحات المتوفرة: 1 إلى {len(STUDENT_PAGES)}"
-            )
+            await update.message.reply_text(f"❌ الصفحة {page_num} غير موجودة")
     except ValueError:
-        await update.message.reply_text("❌ أرسل رقم صفحة صحيح (مثال: 10)")
+        await update.message.reply_text("❌ أرسل رقم صفحة صحيح")
 
 async def back_home(update, context):
+    """عند الضغط على زر '🏠 الرئيسية'"""
     context.user_data.clear()
     await start(update, context)
 
 # ==================== معالج الأزرار التفاعلية ====================
 async def handle_callback(update, context):
+    """عند الضغط على أزرار 'السابق'، 'التالي'، 'القائمة الرئيسية'"""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -126,8 +114,7 @@ async def handle_callback(update, context):
         await query.message.delete()
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"🎓 **مرحباً بك مجدداً!**\n\n📚 **عدد صفحات كتاب الطالب:** {len(STUDENT_PAGES)}",
-            parse_mode='Markdown',
+            text=f"🎓 مرحباً بك!\n📚 عدد الصفحات: {len(STUDENT_PAGES)}",
             reply_markup=main_menu
         )
         return
@@ -136,35 +123,37 @@ async def handle_callback(update, context):
         page_num = data.split("_")[1]
         
         if page_num in STUDENT_PAGES:
-            page_data = STUDENT_PAGES[page_num]
-            content = page_data["content"]
-            title = page_data["title"]
+            content = STUDENT_PAGES[page_num]["content"]
+            title = STUDENT_PAGES[page_num]["title"]
             
             if len(content) > 4000:
-                content = content[:4000] + "\n\n... (يوجد محتوى إضافي)"
+                content = content[:4000] + "\n\n...(يوجد محتوى إضافي)"
             
             await query.edit_message_text(
                 f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
                 parse_mode='Markdown',
                 reply_markup=get_page_buttons(page_num)
             )
-            context.user_data["current_page"] = page_num
 
 # ==================== التشغيل ====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     
-    # الأوامر النصية
+    # أوامر عامة
     app.add_handler(CommandHandler("start", start))
+    
+    # الأزرار الثابتة (ReplyKeyboardMarkup)
     app.add_handler(MessageHandler(filters.Text("📖 كتاب الطالب"), student_book))
     app.add_handler(MessageHandler(filters.Text("🏠 الرئيسية"), back_home))
+    
+    # رسائل نصية (أرقام الصفحات)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, show_page))
     
-    # الأزرار التفاعلية
+    # الأزرار التفاعلية (InlineKeyboardMarkup)
     app.add_handler(CallbackQueryHandler(handle_callback))
     
     print("=" * 60)
-    print(f"🔥 البوت شغال! صفحات الطالب: {len(STUDENT_PAGES)}")
+    print(f"🔥 البوت شغال! {len(STUDENT_PAGES)} صفحة")
     print("=" * 60)
     app.run_polling()
 
