@@ -19,55 +19,59 @@ Thread(target=run_web).start()
 TOKEN = os.environ.get("BOT_TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ==================== فك ضغط الملفات (مع تشخيص دقيق) ====================
+# ==================== فك ضغط الملفات ====================
 def extract_zip(zip_name):
     zip_path = os.path.join(BASE_DIR, zip_name)
     extract_to = os.path.join(BASE_DIR, zip_name.replace(".zip", ""))
-    print(f"📂 محاولة فك: {zip_path} -> {extract_to}")
     
     if os.path.exists(zip_path):
         print(f"📦 جاري فك {zip_name}...")
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as z:
-                z.extractall(extract_to)
-            print(f"✅ تم فك {zip_name}")
-            print(f"📁 محتويات المجلد بعد الفك: {os.listdir(extract_to) if os.path.exists(extract_to) else 'المجلد غير موجود!'}")
-            return True
-        except Exception as e:
-            print(f"❌ خطأ أثناء فك {zip_name}: {e}")
-            return False
-    else:
-        print(f"❌ {zip_name} غير موجود")
-        return False
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_to)
+        print(f"✅ تم فك {zip_name}")
+        return True
+    return False
 
-# فك ضغط الملفات
 extract_zip("student_pages.zip")
+
+# ==================== البحث عن الملفات (حتى لو كانت داخل مجلد فرعي) ====================
+def find_json_files(folder_path):
+    """يبحث عن جميع ملفات JSON في المجلد وأي مجلدات فرعية"""
+    json_files = []
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".json"):
+                json_files.append(os.path.join(root, file))
+    return json_files
 
 # ==================== تحميل صفحات كتاب الطالب ====================
 STUDENT_PAGES = {}
 student_folder = os.path.join(BASE_DIR, "student_pages")
-print(f"\n🔍 البحث عن الصفحات في: {student_folder}")
 
 if os.path.exists(student_folder):
-    print(f"📄 الملفات الموجودة: {os.listdir(student_folder)}")
-    for filename in os.listdir(student_folder):
-        if filename.endswith(".json"):
-            filepath = os.path.join(student_folder, filename)
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    page_num = filename.replace(".json", "").replace("page_", "")
-                    if isinstance(data, dict):
-                        content = data.get("content_original", data.get("content", str(data)))
-                    else:
-                        content = str(data)
-                    STUDENT_PAGES[page_num] = content
-                    print(f"  ✅ صفحة {page_num}")
-            except Exception as e:
-                print(f"  ⚠️ خطأ في {filename}: {e}")
-    print(f"\n✅ تم تحميل {len(STUDENT_PAGES)} صفحة من كتاب الطالب")
+    print(f"📂 البحث عن JSON في: {student_folder}")
+    json_files = find_json_files(student_folder)
+    print(f"📄 عدد ملفات JSON التي تم العثور عليها: {len(json_files)}")
+    
+    for filepath in json_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                filename = os.path.basename(filepath)
+                page_num = filename.replace(".json", "").replace("page_", "")
+                
+                if isinstance(data, dict):
+                    content = data.get("content_original", data.get("content", str(data)))
+                else:
+                    content = str(data)
+                STUDENT_PAGES[page_num] = content
+                print(f"  ✅ صفحة {page_num} من {filename}")
+        except Exception as e:
+            print(f"  ⚠️ خطأ في {filepath}: {e}")
+    
+    print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة من كتاب الطالب")
 else:
-    print(f"❌ مجلد {student_folder} غير موجود! فشل فك الضغط.")
+    print(f"❌ مجلد {student_folder} غير موجود")
 
 # ==================== القائمة ====================
 menu = ReplyKeyboardMarkup([
