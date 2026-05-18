@@ -10,6 +10,9 @@ app = Flask(__name__)
 TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
 
+# ==================== تخزين حالة المستخدمين ====================
+user_book_choice = {}  # {user_id: "student" أو "activity"}
+
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
     pages = {}
@@ -27,7 +30,6 @@ def load_pages_from_zip(zip_path):
     else:
         print(f"✅ المجلد {extract_dir} موجود مسبقاً")
     
-    # البحث عن ملفات JSON
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
@@ -36,17 +38,13 @@ def load_pages_from_zip(zip_path):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         
-                        # البيانات قد تكون مباشرة أو داخل مفتاح رقمي
                         if isinstance(data, dict):
-                            # البحث عن أول مفتاح رقمي (مثل "7", "5" إلخ)
                             page_num = None
                             for key in data.keys():
                                 if str(key).isdigit():
                                     page_num = str(key)
                                     data = data[key]
                                     break
-                            
-                            # إذا لم نجد مفتاحاً رقمياً، نستخدم اسم الملف
                             if not page_num:
                                 page_num = file.replace("page_", "").replace(".json", "")
                         
@@ -144,11 +142,13 @@ def webhook():
     if not data or ('message' not in data and 'callback_query' not in data):
         return 'OK'
 
+    # معالجة الأزرار (callback_query)
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
         msg_id = callback['message']['message_id']
         cb_data = callback['data']
+        user_id = callback['from']['id']
         
         if cb_data == "main_menu":
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
@@ -200,9 +200,11 @@ def webhook():
         })
         return 'OK'
 
+    # معالجة الرسائل النصية
     if 'message' in data:
         chat_id = data['message']['chat']['id']
         text = data['message'].get('text', '')
+        user_id = data['message']['from']['id']
         
         if text == '/start':
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
@@ -211,14 +213,18 @@ def webhook():
                 "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
                 "reply_markup": keyboard
             })
+            # مسح اختيار المستخدم عند البدء
+            user_book_choice.pop(user_id, None)
         
         elif text == "📖 كتاب الطالب":
+            user_book_choice[user_id] = "student"
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
                 "text": f"📖 أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):"
             })
         
         elif text == "✏️ كتاب الأنشطة":
+            user_book_choice[user_id] = "activity"
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
                 "text": f"✏️ أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):"
@@ -226,30 +232,46 @@ def webhook():
         
         elif text.isdigit():
             page_num = text
-            if page_num in STUDENT_PAGES:
-                page = STUDENT_PAGES[page_num]
-                title = page.get("title", f"صفحة {page_num}")
-                content = format_original(page.get("content_original", ""))
-                requests.post(URL + '/sendMessage', json={
-                    "chat_id": chat_id,
-                    "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons("student", page_num, 'original', STUDENT_MIN, STUDENT_MAX),
-                    "parse_mode": "Markdown"
-                })
-            elif page_num in ACTIVITY_PAGES:
-                page = ACTIVITY_PAGES[page_num]
-                title = page.get("title", f"صفحة {page_num}")
-                content = format_original(page.get("content_original", ""))
-                requests.post(URL + '/sendMessage', json={
-                    "chat_id": chat_id,
-                    "text": f"✏️ **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons("activity", page_num, 'original', ACTIVITY_MIN, ACTIVITY_MAX),
-                    "parse_mode": "Markdown"
-                })
+            selected_book = user_book_choice.get(user_id)
+            
+            if selected_book == "student":
+                if page_num in STUDENT_PAGES:
+                    page = STUDENT_PAGES[page_num]
+                    title = page.get("title", f"صفحة {page_num}")
+                    content = format_original(page.get("content_original", ""))
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
+                        "reply_markup": get_page_buttons("student", page_num, 'original', STUDENT_MIN, STUDENT_MAX),
+                        "parse_mode": "Markdown"
+                    })
+                else:
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": f"❌ الصفحة {page_num} غير موجودة في كتاب الطالب\n📚 الصفحات المتوفرة: {student_list}"
+                    })
+            
+            elif selected_book == "activity":
+                if page_num in ACTIVITY_PAGES:
+                    page = ACTIVITY_PAGES[page_num]
+                    title = page.get("title", f"صفحة {page_num}")
+                    content = format_original(page.get("content_original", ""))
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": f"✏️ **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
+                        "reply_markup": get_page_buttons("activity", page_num, 'original', ACTIVITY_MIN, ACTIVITY_MAX),
+                        "parse_mode": "Markdown"
+                    })
+                else:
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": f"❌ الصفحة {page_num} غير موجودة في كتاب الأنشطة\n📚 الصفحات المتوفرة: {activity_list}"
+                    })
+            
             else:
                 requests.post(URL + '/sendMessage', json={
                     "chat_id": chat_id,
-                    "text": f"❌ الصفحة {page_num} غير موجودة"
+                    "text": "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)"
                 })
         
         else:
