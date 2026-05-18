@@ -1,3 +1,6 @@
+import edge_tts
+import asyncio
+import re
 import os
 import json
 import zipfile
