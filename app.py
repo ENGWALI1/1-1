@@ -3,8 +3,10 @@ import json
 import zipfile
 import shutil
 import re
+import asyncio
 from flask import Flask, request
 import requests
+import edge_tts
 
 app = Flask(__name__)
 
@@ -13,6 +15,13 @@ URL = f"https://api.telegram.org/bot{TOKEN}"
 
 # تخزين حالة المستخدمين
 user_book_choice = {}
+
+# سرعات الصوت
+VOICE_RATES = {
+    "بطيء": "-30%",
+    "عادي": "-15%",
+    "سريع": "+1%"
+}
 
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
@@ -34,9 +43,7 @@ def load_pages_from_zip(zip_path):
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
-                # تجاهل ملفات index.json
                 if file == "index.json":
-                    print(f"  ⏭️ تخطي {file} (ملف فهرس)")
                     continue
                 
                 file_path = os.path.join(root, file)
@@ -44,7 +51,6 @@ def load_pages_from_zip(zip_path):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         content = f.read()
                         
-                        # إصلاح: إذا كان الملف يحتوي على أكثر من كائن JSON
                         if content.count('{') > 1 and content.count('}') > 1:
                             match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', content, re.DOTALL)
                             if match:
@@ -52,9 +58,7 @@ def load_pages_from_zip(zip_path):
                         
                         data = json.loads(content)
                         
-                        # التأكد من أن البيانات هي قاموس
                         if not isinstance(data, dict):
-                            print(f"  ⏭️ تخطي {file} (ليس قاموساً، نوعه: {type(data).__name__})")
                             continue
                         
                         page_num = None
@@ -74,8 +78,6 @@ def load_pages_from_zip(zip_path):
                             "exercises": data.get("exercises", [])
                         }
                         print(f"  ✅ صفحة {page_num}")
-                except json.JSONDecodeError as e:
-                    print(f"  ⚠️ خطأ في {file}: {e}")
                 except Exception as e:
                     print(f"  ⚠️ خطأ في {file}: {e}")
     
@@ -99,15 +101,56 @@ ACTIVITY_MAX = max(activity_list) if activity_list else 64
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
 
+# ==================== دالة تحويل النص إلى صوت ====================
+async def text_to_audio(text, book_type, page_num, speed="عادي"):
+    """تحويل النص الإنجليزي إلى ملف صوتي"""
+    audio_dir = "audio"
+    os.makedirs(audio_dir, exist_ok=True)
+    
+    # تنظيف النص من العلامات الزائدة
+    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
+    clean_text = clean_text.replace('━', '').replace('|', '')
+    clean_text = re.sub(r'\s+', ' ', clean_text)
+    
+    # استخراج النص الإنجليزي فقط (لأن الصوت صوت إنجليزي)
+    lines = clean_text.split('\n')
+    english_parts = []
+    for line in lines:
+        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
+        total_chars = len(line.strip())
+        if total_chars > 0:
+            arabic_ratio = arabic_chars / total_chars
+            if arabic_ratio < 0.5:
+                english_parts.append(line)
+    
+    clean_text = ' '.join(english_parts)
+    
+    # إذا لم يتبق نص إنجليزي، نرسل نص افتراضي
+    if not clean_text or len(clean_text.strip()) < 10:
+        clean_text = f"Page {page_num} of {book_type} book."
+    
+    rate = VOICE_RATES.get(speed, "-15%")
+    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
+    audio_path = os.path.join(audio_dir, audio_filename)
+    
+    if os.path.exists(audio_path):
+        return audio_path
+    
+    try:
+        voice = "en-US-JennyNeural"
+        communicate = edge_tts.Communicate(clean_text[:3000], voice, rate=rate)
+        await communicate.save(audio_path)
+        return audio_path
+    except Exception as e:
+        print(f"خطأ في الصوت: {e}")
+        return None
+
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
     if not content:
         return "لا يوجد محتوى نصي"
     
-    # إضافة فواصل بين الأقسام
     content = content.replace("---", "\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
-    
-    # عناوين الأقسام الرئيسية
     content = content.replace("Grammar", "\n📚 **Grammar**\n")
     content = content.replace("Listening", "\n🎧 **Listening**\n")
     content = content.replace("Speaking", "\n💬 **Speaking**\n")
@@ -118,11 +161,9 @@ def format_original(content):
     content = content.replace("Unit plan", "\n📋 **Unit plan**\n")
     content = content.replace("Keep in mind", "\n💡 **Keep in mind**\n")
     
-    # تحسين عرض الأسئلة
     lines = content.split('\n')
     result = []
     for line in lines:
-        # إضافة مسافة قبل الأسئلة المرقمة
         if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
             result.append("")
             result.append(line)
@@ -136,7 +177,6 @@ def format_original(content):
     
     content = '\n'.join(result)
     
-    # تقطيع النص الطويل
     if len(content) > 4000:
         content = content[:4000] + "\n\n... (يوجد محتوى إضافي تم اختصاره)"
     
@@ -151,7 +191,6 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
-    """تنسيق حل التمارين (يدعم تمارين speaking أيضاً)"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
     
@@ -191,6 +230,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
+            {"text": "🔊 الصوت", "callback_data": f"audio_speed_{prefix}_{page_num}"},
             {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
         ])
     elif mode == 'translated':
@@ -206,6 +246,19 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
+
+def get_audio_speed_buttons(book_type, page_num):
+    prefix = "student" if book_type == "student" else "activity"
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🐢 بطيء", "callback_data": f"audio_{prefix}_{page_num}_بطيء"},
+                {"text": "🐕 عادي", "callback_data": f"audio_{prefix}_{page_num}_عادي"},
+                {"text": "🐇 سريع", "callback_data": f"audio_{prefix}_{page_num}_سريع"}
+            ],
+            [{"text": "🔙 رجوع", "callback_data": f"{prefix}_original_{page_num}"}]
+        ]
+    }
 
 # ==================== إعداد الـ Webhook ====================
 @app.route('/')
@@ -226,6 +279,55 @@ def webhook():
         cb_data = callback['data']
         user_id = callback['from']['id']
         
+        # قائمة السرعات
+        if cb_data.startswith("audio_speed_"):
+            parts = cb_data.split("_")
+            prefix = parts[2]
+            page_num = parts[3]
+            requests.post(URL + '/editMessageReplyMarkup', json={
+                "chat_id": chat_id,
+                "message_id": msg_id,
+                "reply_markup": get_audio_speed_buttons(prefix, page_num)
+            })
+            return 'OK'
+        
+        # تشغيل الصوت
+        if cb_data.startswith("audio_"):
+            parts = cb_data.split("_")
+            prefix = parts[1]
+            page_num = parts[2]
+            speed = parts[3]
+            
+            # إرسال إشعار بأن الصوت قيد التجهيز
+            requests.post(URL + '/sendMessage', json={
+                "chat_id": chat_id,
+                "text": "🎵 جاري تجهيز الصوت، انتظر قليلاً..."
+            })
+            
+            # الحصول على النص الأصلي
+            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
+            if page_num in pages:
+                text = pages[page_num].get("content_original", "")
+                # تشغيل دالة الصوت (باستخدام asyncio)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                audio_path = loop.run_until_complete(text_to_audio(text, prefix, page_num, speed))
+                loop.close()
+                
+                if audio_path and os.path.exists(audio_path):
+                    with open(audio_path, 'rb') as audio:
+                        files = {'audio': audio}
+                        requests.post(URL + '/sendVoice', json={
+                            "chat_id": chat_id,
+                            "voice": audio_path
+                        })
+                else:
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": "❌ عذراً، حدث خطأ في إنشاء الصوت"
+                    })
+            return 'OK'
+        
         if cb_data == "main_menu":
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
@@ -240,7 +342,7 @@ def webhook():
         if len(parts) < 3:
             return 'OK'
         
-        book_type = parts[0]
+        book_type = "student" if parts[0] == "student" else "activity"
         action = parts[1]
         page_num = parts[2]
         
