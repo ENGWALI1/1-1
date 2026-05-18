@@ -98,59 +98,37 @@ print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} 
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
 
 # ==================== دالة تحويل النص إلى صوت (نسخة asyncio) ====================
-async def get_audio_async(text, book_type, page_num, speed="عادي"):
-    audio_dir = "audio"
-    os.makedirs(audio_dir, exist_ok=True)
+def get_page_buttons(book_type, page_num, mode, min_page, max_page):
+    buttons = []
+    prefix = "student" if book_type == "student" else "activity"
     
-    # تنظيف النص
-    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
-    clean_text = clean_text.replace('━━', '').replace('**', '').replace('|', '')
-    clean_text = re.sub(r'\s+', ' ', clean_text)
+    nav = []
+    if int(page_num) > min_page:
+        nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
+    if int(page_num) < max_page:
+        nav.append({"text": "التالي ▶️", "callback_data": f"{prefix}_page_{int(page_num)+1}"})
+    if nav:
+        buttons.append(nav)
     
-    # استخراج النص الإنجليزي فقط
-    lines = clean_text.split('\n')
-    english_parts = []
-    for line in lines:
-        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
-        total_chars = len(line.strip())
-        if total_chars > 0:
-            arabic_ratio = arabic_chars / total_chars
-            if arabic_ratio < 0.5:
-                english_parts.append(line)
+    if mode == 'original':
+        buttons.append([
+            {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
+            {"text": "🔊 الصوت", "callback_data": f"audio_{prefix}_{page_num}"},
+            {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
+        ])
+    elif mode == 'translated':
+        buttons.append([
+            {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
+            {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
+        ])
+    else:
+        buttons.append([
+            {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
+            {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
+        ])
     
-    clean_text = ' '.join(english_parts)
-    
-    if not clean_text or len(clean_text.strip()) < 10:
-        clean_text = f"Page {page_num} of {book_type} book."
-    
-    rate = VOICE_RATES.get(speed, "-15%")
-    
-    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
-    audio_path = os.path.join(audio_dir, audio_filename)
-    
-    if os.path.exists(audio_path):
-        return audio_path
-    
-    try:
-        voice = "en-US-JennyNeural"
-        communicate = edge_tts.Communicate(clean_text[:3000], voice, rate=rate)
-        await communicate.save(audio_path)
-        return audio_path
-    except Exception as e:
-        print(f"خطأ في الصوت: {e}")
-        return None
-
-def text_to_audio(text, book_type, page_num, speed="عادي"):
-    """تحويل النص إلى صوت (متزامن)"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(get_audio_async(text, book_type, page_num, speed))
-        loop.close()
-        return result
-    except Exception as e:
-        print(f"خطأ في تشغيل asyncio: {e}")
-        return None
+    buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
+    return {"inline_keyboard": buttons}
 
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
@@ -286,45 +264,32 @@ def webhook():
         cb_data = callback['data']
         
         # قائمة اختيار سرعة الصوت
-        if cb_data.startswith("audio_speed_"):
-            parts = cb_data.split("_")
-            prefix = parts[2]
-            page_num = parts[3]
-            requests.post(URL + '/editMessageReplyMarkup', json={
-                "chat_id": chat_id,
-                "message_id": msg_id,
-                "reply_markup": get_audio_speed_buttons(prefix, page_num)
-            })
-            return 'OK'
-        
-        # تشغيل الصوت
         if cb_data.startswith("audio_"):
-            parts = cb_data.split("_")
-            prefix = parts[1]
-            page_num = parts[2]
-            speed = parts[3]
-            
-            # إشعار بأن الصوت قيد التجهيز
+    parts = cb_data.split("_")
+    prefix = parts[1]
+    page_num = parts[2]
+    
+    # إشعار
+    requests.post(URL + '/sendMessage', json={
+        "chat_id": chat_id,
+        "text": "🎵 جاري تجهيز الصوت، انتظر قليلاً..."
+    })
+    
+    pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
+    if page_num in pages:
+        text = pages[page_num].get("content_original", "")
+        audio_path = text_to_audio(text, prefix, page_num)
+        
+        if audio_path and os.path.exists(audio_path):
+            with open(audio_path, 'rb') as audio:
+                files = {'voice': audio}
+                requests.post(URL + '/sendVoice', files=files, data={"chat_id": chat_id})
+        else:
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": "🎵 جاري تجهيز الصوت، انتظر قليلاً..."
+                "text": "❌ عذراً، حدث خطأ في إنشاء الصوت"
             })
-            
-            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
-            if page_num in pages:
-                text = pages[page_num].get("content_original", "")
-                audio_path = text_to_audio(text, prefix, page_num, speed)
-                
-                if audio_path and os.path.exists(audio_path):
-                    with open(audio_path, 'rb') as audio:
-                        files = {'voice': audio}
-                        requests.post(URL + '/sendVoice', files=files, data={"chat_id": chat_id})
-                else:
-                    requests.post(URL + '/sendMessage', json={
-                        "chat_id": chat_id,
-                        "text": "❌ عذراً، حدث خطأ في إنشاء الصوت"
-                    })
-            return 'OK'
+    return 'OK'
         
         if cb_data == "main_menu":
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
