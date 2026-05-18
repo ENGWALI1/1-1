@@ -104,27 +104,35 @@ def format_original(content):
     if not content:
         return "لا يوجد محتوى نصي"
     
-    # تنظيف
-    content = content.replace("**", "")
-    
-    # إضافة رؤوس
+    # إضافة فواصل بين الأقسام
     content = content.replace("---", "\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
-    content = content.replace("Grammar", "\n📚 **القواعد**\n")
-    content = content.replace("Listening", "\n🎧 **الاستماع**\n")
-    content = content.replace("Speaking", "\n💬 **المحادثة**\n")
-    content = content.replace("Reading", "\n📖 **القراءة**\n")
-    content = content.replace("Writing", "\n✍️ **الكتابة**\n")
-    content = content.replace("Vocabulary", "\n📝 **المفردات**\n")
-    content = content.replace("Pronunciation", "\n🔊 **النطق**\n")
-    content = content.replace("Unit plan", "\n📋 **خطة الوحدة**\n")
     
-    # تحسين عرض الأرقام
+    # عناوين الأقسام الرئيسية
+    content = content.replace("Grammar", "\n📚 **Grammar**\n")
+    content = content.replace("Listening", "\n🎧 **Listening**\n")
+    content = content.replace("Speaking", "\n💬 **Speaking**\n")
+    content = content.replace("Reading", "\n📖 **Reading**\n")
+    content = content.replace("Writing", "\n✏️ **Writing**\n")
+    content = content.replace("Vocabulary", "\n📝 **Vocabulary**\n")
+    content = content.replace("Pronunciation", "\n🔊 **Pronunciation**\n")
+    content = content.replace("Unit plan", "\n📋 **Unit plan**\n")
+    content = content.replace("Keep in mind", "\n💡 **Keep in mind**\n")
+    
+    # تحسين عرض الأسئلة
     lines = content.split('\n')
     result = []
     for line in lines:
-        if line.strip() and line.strip()[0].isdigit() and len(line.strip()) > 1 and line.strip()[1] in ['.', '-']:
+        # إضافة مسافة قبل الأسئلة المرقمة
+        if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
             result.append("")
-        result.append(line)
+            result.append(line)
+        elif line.strip().startswith(('A.', 'B.', 'C.', 'D.')):
+            result.append("")
+            result.append(line)
+        elif line.strip().startswith(('a.', 'b.', 'c.', 'd.')):
+            result.append(f"   {line}")
+        else:
+            result.append(line)
     
     content = '\n'.join(result)
     
