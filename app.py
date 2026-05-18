@@ -101,7 +101,38 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_M
 
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
-    return content if content else "لا يوجد محتوى نصي"
+    if not content:
+        return "لا يوجد محتوى نصي"
+    
+    # تنظيف
+    content = content.replace("**", "")
+    
+    # إضافة رؤوس
+    content = content.replace("---", "\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
+    content = content.replace("Grammar", "\n📚 **القواعد**\n")
+    content = content.replace("Listening", "\n🎧 **الاستماع**\n")
+    content = content.replace("Speaking", "\n💬 **المحادثة**\n")
+    content = content.replace("Reading", "\n📖 **القراءة**\n")
+    content = content.replace("Writing", "\n✍️ **الكتابة**\n")
+    content = content.replace("Vocabulary", "\n📝 **المفردات**\n")
+    content = content.replace("Pronunciation", "\n🔊 **النطق**\n")
+    content = content.replace("Unit plan", "\n📋 **خطة الوحدة**\n")
+    
+    # تحسين عرض الأرقام
+    lines = content.split('\n')
+    result = []
+    for line in lines:
+        if line.strip() and line.strip()[0].isdigit() and len(line.strip()) > 1 and line.strip()[1] in ['.', '-']:
+            result.append("")
+        result.append(line)
+    
+    content = '\n'.join(result)
+    
+    # تقطيع النص الطويل
+    if len(content) > 4000:
+        content = content[:4000] + "\n\n... (يوجد محتوى إضافي تم اختصاره)"
+    
+    return content
 
 def format_translation(lines):
     if not lines:
