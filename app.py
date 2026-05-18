@@ -61,7 +61,10 @@ def load_student_pages():
     return pages
 
 STUDENT_PAGES = load_student_pages()
-print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة")
+pages_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
+MIN_PAGE = min(pages_list) if pages_list else 1
+MAX_PAGE = max(pages_list) if pages_list else 80
+print(f"✅ تم تحميل {len(STUDENT_PAGES)} صفحة (من {MIN_PAGE} إلى {MAX_PAGE})")
 
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
@@ -92,15 +95,15 @@ def format_exercises(exercises):
         result += f"**{i}. {text}**\n✅ {answer}\n\n"
     return result
 
-def get_page_buttons(page_num, mode, min_page, max_page):
+def get_page_buttons(page_num, mode):
     """أزرار التنقل والترجمة وحل التمارين"""
     buttons = []
     
     # أزرار التنقل
     nav = []
-    if int(page_num) > min_page:
+    if int(page_num) > MIN_PAGE:
         nav.append({"text": "◀️ السابق", "callback_data": f"page_{int(page_num)-1}"})
-    if int(page_num) < max_page:
+    if int(page_num) < MAX_PAGE:
         nav.append({"text": "التالي ▶️", "callback_data": f"page_{int(page_num)+1}"})
     if nav:
         buttons.append(nav)
@@ -128,7 +131,7 @@ def get_page_buttons(page_num, mode, min_page, max_page):
 # ==================== إعداد الـ Webhook ====================
 @app.route('/')
 def home():
-    return f"<h1>🤖 @withali91_bot</h1><p>{len(STUDENT_PAGES)} صفحة</p>"
+    return f"<h1>🤖 @withali91_bot</h1><p>{len(STUDENT_PAGES)} صفحة ({MIN_PAGE} إلى {MAX_PAGE})</p>"
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
@@ -149,7 +152,7 @@ def webhook():
             keyboard = {"keyboard": [["📖 كتاب الطالب"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً!\n📚 {len(STUDENT_PAGES)} صفحة\nاضغط الزر 👇",
+                "text": f"🎉 مرحباً بك!\n📚 الصفحات المتوفرة: {MIN_PAGE} إلى {MAX_PAGE}\nاضغط الزر 👇",
                 "reply_markup": keyboard
             })
             requests.post(URL + '/deleteMessage', json={
@@ -160,9 +163,6 @@ def webhook():
         
         # معالجة أزرار الترجمة وحل التمارين والتنقل
         parts = cb_data.split("_")
-        pages_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
-        min_page = min(pages_list)
-        max_page = max(pages_list)
         
         if parts[0] == 'original':
             page_num = parts[1]
@@ -174,7 +174,7 @@ def webhook():
                     "chat_id": chat_id,
                     "message_id": msg_id,
                     "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons(page_num, 'original', min_page, max_page),
+                    "reply_markup": get_page_buttons(page_num, 'original'),
                     "parse_mode": "Markdown"
                 })
         
@@ -188,7 +188,7 @@ def webhook():
                     "chat_id": chat_id,
                     "message_id": msg_id,
                     "text": f"📖 **{title} - الترجمة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons(page_num, 'translated', min_page, max_page),
+                    "reply_markup": get_page_buttons(page_num, 'translated'),
                     "parse_mode": "Markdown"
                 })
         
@@ -202,7 +202,7 @@ def webhook():
                     "chat_id": chat_id,
                     "message_id": msg_id,
                     "text": f"📖 **{title} - حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons(page_num, 'solved', min_page, max_page),
+                    "reply_markup": get_page_buttons(page_num, 'solved'),
                     "parse_mode": "Markdown"
                 })
         
@@ -216,7 +216,7 @@ def webhook():
                     "chat_id": chat_id,
                     "message_id": msg_id,
                     "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                    "reply_markup": get_page_buttons(page_num, 'original', min_page, max_page),
+                    "reply_markup": get_page_buttons(page_num, 'original'),
                     "parse_mode": "Markdown"
                 })
         
@@ -232,19 +232,18 @@ def webhook():
             keyboard = {"keyboard": [["📖 كتاب الطالب"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً بك!\n📚 {len(STUDENT_PAGES)} صفحة\nاضغط الزر 👇",
+                "text": f"🎉 مرحباً بك!\n📚 الصفحات المتوفرة: {MIN_PAGE} إلى {MAX_PAGE}\nاضغط الزر 👇",
                 "reply_markup": keyboard
             })
         
         elif text == "📖 كتاب الطالب":
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"📄 أرسل رقم الصفحة (1-{len(STUDENT_PAGES)}):"
+                "text": f"📄 أرسل رقم الصفحة ({MIN_PAGE}-{MAX_PAGE}):"
             })
         
         elif text.isdigit():
             page_num = text
-            pages_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
             if int(page_num) in pages_list:
                 page = STUDENT_PAGES.get(page_num)
                 if page:
@@ -253,13 +252,13 @@ def webhook():
                     requests.post(URL + '/sendMessage', json={
                         "chat_id": chat_id,
                         "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                        "reply_markup": get_page_buttons(page_num, 'original', min(pages_list), max(pages_list)),
+                        "reply_markup": get_page_buttons(page_num, 'original'),
                         "parse_mode": "Markdown"
                     })
             else:
                 requests.post(URL + '/sendMessage', json={
                     "chat_id": chat_id,
-                    "text": f"❌ الصفحة {page_num} غير موجودة\n📚 المتوفرة: {pages_list}"
+                    "text": f"❌ الصفحة {page_num} غير موجودة\n📚 الصفحات المتوفرة: {pages_list}"
                 })
         
         else:
