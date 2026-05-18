@@ -10,8 +10,8 @@ app = Flask(__name__)
 TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
 
-# ==================== تخزين حالة المستخدمين ====================
-user_book_choice = {}  # {user_id: "student" أو "activity"}
+# تخزين حالة المستخدمين
+user_book_choice = {}
 
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
@@ -91,13 +91,31 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
+    """تنسيق حل التمارين (يدعم تمارين speaking أيضاً)"""
     if not exercises:
-        return "لا توجد تمارين"
+        return "لا توجد تمارين في هذه الصفحة"
+    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
     for i, ex in enumerate(exercises, 1):
-        text = ex.get('text', ex.get('question', f'سؤال {i}'))
-        answer = ex.get('answer', '---')
-        result += f"**{i}. {text}**\n✅ {answer}\n\n"
+        ex_type = ex.get('type', '')
+        
+        if ex_type == 'speaking':
+            # تمرين محادثة (أسئلة وأجوبة نموذجية)
+            questions = ex.get('questions', [])
+            answers = ex.get('answers', [])
+            result += f"**🗣️ نشاط المحادثة {i}:**\n"
+            for j, q in enumerate(questions):
+                result += f"**سؤال {j+1}:** {q}\n"
+                if j < len(answers):
+                    result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
+                result += "\n"
+        else:
+            # تمرين عادي (سؤال وجواب)
+            text = ex.get('text', ex.get('question', f'سؤال {i}'))
+            answer = ex.get('answer', '---')
+            result += f"**{i}. {text}**\n✅ {answer}\n\n"
+    
     return result
 
 def get_page_buttons(book_type, page_num, mode, min_page, max_page):
@@ -142,7 +160,7 @@ def webhook():
     if not data or ('message' not in data and 'callback_query' not in data):
         return 'OK'
 
-    # معالجة الأزرار (callback_query)
+    # معالجة الأزرار
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -213,7 +231,6 @@ def webhook():
                 "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
                 "reply_markup": keyboard
             })
-            # مسح اختيار المستخدم عند البدء
             user_book_choice.pop(user_id, None)
         
         elif text == "📖 كتاب الطالب":
