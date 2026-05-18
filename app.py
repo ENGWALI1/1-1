@@ -3,10 +3,9 @@ import json
 import zipfile
 import shutil
 import re
-import asyncio
+import subprocess
 from flask import Flask, request
 import requests
-import edge_tts
 
 app = Flask(__name__)
 
@@ -103,22 +102,32 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_M
 
 # ==================== دالة تحويل النص إلى صوت ====================
 def text_to_audio(text, book_type, page_num, speed="عادي"):
-    """تحويل النص إلى صوت (نسخة متزامنة)"""
-    import subprocess
-    
+    """تحويل النص إلى ملف صوتي (متزامن)"""
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
-    # تنظيف النص
+    # تنظيف النص من العلامات الزائدة
     clean_text = text.replace('*', '').replace('_', '').replace('`', '')
-    clean_text = re.sub(r'[^\x00-\x7F]+', ' ', clean_text)  # إزالة العربية
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    clean_text = clean_text.replace('━', '').replace('|', '')
+    clean_text = re.sub(r'\s+', ' ', clean_text)
     
-    if len(clean_text) < 10:
+    # استخراج النص الإنجليزي فقط
+    lines = clean_text.split('\n')
+    english_parts = []
+    for line in lines:
+        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
+        total_chars = len(line.strip())
+        if total_chars > 0:
+            arabic_ratio = arabic_chars / total_chars
+            if arabic_ratio < 0.5:
+                english_parts.append(line)
+    
+    clean_text = ' '.join(english_parts)
+    
+    if not clean_text or len(clean_text.strip()) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
     
-    rate_map = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
-    rate = rate_map.get(speed, "-15%")
+    rate = VOICE_RATES.get(speed, "-15%")
     
     audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
     audio_path = os.path.join(audio_dir, audio_filename)
@@ -127,7 +136,6 @@ def text_to_audio(text, book_type, page_num, speed="عادي"):
         return audio_path
     
     try:
-        # استخدام subprocess بدلاً من asyncio (أكثر استقراراً على Render)
         cmd = [
             "edge-tts",
             "--voice", "en-US-JennyNeural",
@@ -135,8 +143,12 @@ def text_to_audio(text, book_type, page_num, speed="عادي"):
             "--text", clean_text[:3000],
             "--write-media", audio_path
         ]
-        subprocess.run(cmd, capture_output=True, timeout=30)
-        return audio_path if os.path.exists(audio_path) else None
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0 and os.path.exists(audio_path):
+            return audio_path
+        else:
+            print(f"edge-tts error: {result.stderr}")
+            return None
     except Exception as e:
         print(f"خطأ في الصوت: {e}")
         return None
@@ -273,9 +285,8 @@ def webhook():
         chat_id = callback['message']['chat']['id']
         msg_id = callback['message']['message_id']
         cb_data = callback['data']
-        user_id = callback['from']['id']
         
-        # قائمة السرعات
+        # قائمة اختيار سرعة الصوت
         if cb_data.startswith("audio_speed_"):
             parts = cb_data.split("_")
             prefix = parts[2]
@@ -294,29 +305,21 @@ def webhook():
             page_num = parts[2]
             speed = parts[3]
             
-            # إرسال إشعار بأن الصوت قيد التجهيز
+            # إشعار بأن الصوت قيد التجهيز
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
                 "text": "🎵 جاري تجهيز الصوت، انتظر قليلاً..."
             })
             
-            # الحصول على النص الأصلي
             pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
             if page_num in pages:
                 text = pages[page_num].get("content_original", "")
-                # تشغيل دالة الصوت (باستخدام asyncio)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                audio_path = loop.run_until_complete(text_to_audio(text, prefix, page_num, speed))
-                loop.close()
+                audio_path = text_to_audio(text, prefix, page_num, speed)
                 
                 if audio_path and os.path.exists(audio_path):
                     with open(audio_path, 'rb') as audio:
-                        files = {'audio': audio}
-                        requests.post(URL + '/sendVoice', json={
-                            "chat_id": chat_id,
-                            "voice": audio_path
-                        })
+                        files = {'voice': audio}
+                        requests.post(URL + '/sendVoice', files=files, data={"chat_id": chat_id})
                 else:
                     requests.post(URL + '/sendMessage', json={
                         "chat_id": chat_id,
