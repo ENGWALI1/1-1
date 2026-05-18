@@ -2,6 +2,7 @@ import os
 import json
 import zipfile
 import shutil
+import re
 from flask import Flask, request
 import requests
 
@@ -33,20 +34,38 @@ def load_pages_from_zip(zip_path):
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
+                # تجاهل ملفات index.json
+                if file == "index.json":
+                    print(f"  ⏭️ تخطي {file} (ملف فهرس)")
+                    continue
+                
                 file_path = os.path.join(root, file)
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+                        content = f.read()
                         
-                        if isinstance(data, dict):
-                            page_num = None
-                            for key in data.keys():
-                                if str(key).isdigit():
-                                    page_num = str(key)
-                                    data = data[key]
-                                    break
-                            if not page_num:
-                                page_num = file.replace("page_", "").replace(".json", "")
+                        # إصلاح: إذا كان الملف يحتوي على أكثر من كائن JSON
+                        if content.count('{') > 1 and content.count('}') > 1:
+                            match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', content, re.DOTALL)
+                            if match:
+                                content = match.group(1)
+                        
+                        data = json.loads(content)
+                        
+                        # التأكد من أن البيانات هي قاموس
+                        if not isinstance(data, dict):
+                            print(f"  ⏭️ تخطي {file} (ليس قاموساً، نوعه: {type(data).__name__})")
+                            continue
+                        
+                        page_num = None
+                        for key in data.keys():
+                            if str(key).isdigit():
+                                page_num = str(key)
+                                data = data[key]
+                                break
+                        
+                        if not page_num:
+                            page_num = file.replace("page_", "").replace(".json", "")
                         
                         pages[page_num] = {
                             "title": data.get("title", f"صفحة {page_num}"),
@@ -55,6 +74,8 @@ def load_pages_from_zip(zip_path):
                             "exercises": data.get("exercises", [])
                         }
                         print(f"  ✅ صفحة {page_num}")
+                except json.JSONDecodeError as e:
+                    print(f"  ⚠️ خطأ في {file}: {e}")
                 except Exception as e:
                     print(f"  ⚠️ خطأ في {file}: {e}")
     
@@ -101,7 +122,6 @@ def format_exercises(exercises):
         ex_type = ex.get('type', '')
         
         if ex_type == 'speaking':
-            # تمرين محادثة (أسئلة وأجوبة نموذجية)
             questions = ex.get('questions', [])
             answers = ex.get('answers', [])
             result += f"**🗣️ نشاط المحادثة {i}:**\n"
@@ -111,7 +131,6 @@ def format_exercises(exercises):
                     result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
                 result += "\n"
         else:
-            # تمرين عادي (سؤال وجواب)
             text = ex.get('text', ex.get('question', f'سؤال {i}'))
             answer = ex.get('answer', '---')
             result += f"**{i}. {text}**\n✅ {answer}\n\n"
