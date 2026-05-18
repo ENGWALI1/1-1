@@ -102,34 +102,24 @@ print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} 
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
 
 # ==================== دالة تحويل النص إلى صوت ====================
-async def text_to_audio(text, book_type, page_num, speed="عادي"):
-    """تحويل النص الإنجليزي إلى ملف صوتي"""
+def text_to_audio(text, book_type, page_num, speed="عادي"):
+    """تحويل النص إلى صوت (نسخة متزامنة)"""
+    import subprocess
+    
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
-    # تنظيف النص من العلامات الزائدة
+    # تنظيف النص
     clean_text = text.replace('*', '').replace('_', '').replace('`', '')
-    clean_text = clean_text.replace('━', '').replace('|', '')
-    clean_text = re.sub(r'\s+', ' ', clean_text)
+    clean_text = re.sub(r'[^\x00-\x7F]+', ' ', clean_text)  # إزالة العربية
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
     
-    # استخراج النص الإنجليزي فقط (لأن الصوت صوت إنجليزي)
-    lines = clean_text.split('\n')
-    english_parts = []
-    for line in lines:
-        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
-        total_chars = len(line.strip())
-        if total_chars > 0:
-            arabic_ratio = arabic_chars / total_chars
-            if arabic_ratio < 0.5:
-                english_parts.append(line)
-    
-    clean_text = ' '.join(english_parts)
-    
-    # إذا لم يتبق نص إنجليزي، نرسل نص افتراضي
-    if not clean_text or len(clean_text.strip()) < 10:
+    if len(clean_text) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
     
-    rate = VOICE_RATES.get(speed, "-15%")
+    rate_map = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
+    rate = rate_map.get(speed, "-15%")
+    
     audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
     audio_path = os.path.join(audio_dir, audio_filename)
     
@@ -137,10 +127,16 @@ async def text_to_audio(text, book_type, page_num, speed="عادي"):
         return audio_path
     
     try:
-        voice = "en-US-JennyNeural"
-        communicate = edge_tts.Communicate(clean_text[:3000], voice, rate=rate)
-        await communicate.save(audio_path)
-        return audio_path
+        # استخدام subprocess بدلاً من asyncio (أكثر استقراراً على Render)
+        cmd = [
+            "edge-tts",
+            "--voice", "en-US-JennyNeural",
+            "--rate", rate,
+            "--text", clean_text[:3000],
+            "--write-media", audio_path
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=30)
+        return audio_path if os.path.exists(audio_path) else None
     except Exception as e:
         print(f"خطأ في الصوت: {e}")
         return None
