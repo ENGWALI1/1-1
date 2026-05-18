@@ -102,11 +102,13 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_M
 
 # ==================== دالة تحويل النص إلى صوت ====================
 def text_to_audio(text, book_type, page_num, speed="عادي"):
-    """تحويل النص إلى ملف صوتي (متزامن)"""
+    """تحويل النص إلى صوت باستخدام Google Translate TTS"""
+    import requests
+    
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
-    # تنظيف النص من العلامات الزائدة
+    # تنظيف النص
     clean_text = text.replace('*', '').replace('_', '').replace('`', '')
     clean_text = clean_text.replace('━', '').replace('|', '')
     clean_text = re.sub(r'\s+', ' ', clean_text)
@@ -127,7 +129,8 @@ def text_to_audio(text, book_type, page_num, speed="عادي"):
     if not clean_text or len(clean_text.strip()) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
     
-    rate = VOICE_RATES.get(speed, "-15%")
+    # تحديد سرعة الصوت (Google TTS لا يدعم السرعة، نضيفها عبر معامل)
+    speed_map = {"بطيء": "slow", "عادي": "normal", "سريع": "fast"}
     
     audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
     audio_path = os.path.join(audio_dir, audio_filename)
@@ -136,18 +139,22 @@ def text_to_audio(text, book_type, page_num, speed="عادي"):
         return audio_path
     
     try:
-        cmd = [
-            "edge-tts",
-            "--voice", "en-US-JennyNeural",
-            "--rate", rate,
-            "--text", clean_text[:3000],
-            "--write-media", audio_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode == 0 and os.path.exists(audio_path):
+        # استخدام Google Translate TTS
+        url = "https://translate.google.com/translate_tts"
+        params = {
+            "ie": "UTF-8",
+            "q": clean_text[:200],  # حد أقصى 200 حرف
+            "tl": "en",
+            "client": "tw-ob"
+        }
+        response = requests.get(url, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            with open(audio_path, 'wb') as f:
+                f.write(response.content)
             return audio_path
         else:
-            print(f"edge-tts error: {result.stderr}")
+            print(f"Google TTS error: {response.status_code}")
             return None
     except Exception as e:
         print(f"خطأ في الصوت: {e}")
