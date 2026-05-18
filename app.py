@@ -10,51 +10,72 @@ app = Flask(__name__)
 TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
 
+# ==================== فحص الملفات (تشخيص) ====================
+print("📂 فحص الملفات في المسار الحالي:")
+for file in os.listdir('.'):
+    if file.endswith('.zip'):
+        print(f"  📦 {file} - حجمه: {os.path.getsize(file)} bytes")
+
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
     pages = {}
-    extract_dir = "temp_extract"
+    extract_dir = zip_path.replace(".zip", "")  # استخدم اسم الملف كمجلد
     
     if not os.path.exists(zip_path):
         print(f"❌ {zip_path} غير موجود")
         return pages
     
-    if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)
+    # فك الضغط فقط إذا المجلد غير موجود
+    if not os.path.exists(extract_dir):
+        print(f"📦 فك ضغط {zip_path} إلى {extract_dir}...")
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_dir)
+        print(f"✅ تم فك الضغط")
+    else:
+        print(f"✅ المجلد {extract_dir} موجود مسبقاً")
     
-    print(f"📦 فك ضغط {zip_path}...")
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_dir)
-    
+    # البحث عن ملفات JSON في المجلد (بما في ذلك المجلدات الفرعية)
+    json_files = []
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        # استخراج رقم الصفحة
-                        page_num = file.replace("page_", "").replace(".json", "")
-                        if not page_num.isdigit() and isinstance(data, dict):
-                            for key in data.keys():
-                                if str(key).isdigit():
-                                    page_num = str(key)
-                                    data = data[key]
-                                    break
-                        pages[page_num] = {
-                            "title": data.get("title", f"صفحة {page_num}"),
-                            "content_original": data.get("content_original", data.get("content", "")),
-                            "content_line_by_line": data.get("content_line_by_line", []),
-                            "exercises": data.get("exercises", [])
-                        }
-                except Exception as e:
-                    print(f"⚠️ خطأ في {file}: {e}")
+                json_files.append(os.path.join(root, file))
     
-    shutil.rmtree(extract_dir)
+    print(f"📄 عدد ملفات JSON في {zip_path}: {len(json_files)}")
+    
+    for file_path in json_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                filename = os.path.basename(file_path)
+                page_num = filename.replace("page_", "").replace(".json", "")
+                
+                # إذا كان الرقم ليس رقماً، ابحث عن مفتاح رقمي
+                if not page_num.isdigit() and isinstance(data, dict):
+                    for key in data.keys():
+                        if str(key).isdigit():
+                            page_num = str(key)
+                            data = data[key]
+                            break
+                
+                pages[page_num] = {
+                    "title": data.get("title", f"صفحة {page_num}"),
+                    "content_original": data.get("content_original", data.get("content", "")),
+                    "content_line_by_line": data.get("content_line_by_line", []),
+                    "exercises": data.get("exercises", [])
+                }
+                print(f"  ✅ صفحة {page_num}")
+        except Exception as e:
+            print(f"  ⚠️ خطأ في {file_path}: {e}")
+    
     return pages
 
 # تحميل الكتابين
+print("\n" + "="*50)
+print("📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
+
+print("\n📚 تحميل كتاب الأنشطة...")
 ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
 
 student_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
@@ -65,8 +86,9 @@ STUDENT_MAX = max(student_list) if student_list else 80
 ACTIVITY_MIN = min(activity_list) if activity_list else 1
 ACTIVITY_MAX = max(activity_list) if activity_list else 64
 
-print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
+print(f"\n✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
+print("="*50)
 
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
@@ -94,7 +116,6 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
     prefix = "student" if book_type == "student" else "activity"
     
-    # أزرار التنقل
     nav = []
     if int(page_num) > min_page:
         nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
@@ -103,7 +124,6 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     if nav:
         buttons.append(nav)
     
-    # أزرار الترجمة وحل التمارين
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
@@ -134,7 +154,6 @@ def webhook():
     if not data or ('message' not in data and 'callback_query' not in data):
         return 'OK'
 
-    # معالجة الأزرار
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -145,7 +164,7 @@ def webhook():
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً بك!\n📖 طالب: {len(STUDENT_PAGES)} صفحة\n✏️ أنشطة: {len(ACTIVITY_PAGES)} صفحة\nاختر الكتاب 👇",
+                "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
                 "reply_markup": keyboard
             })
             requests.post(URL + '/deleteMessage', json={"chat_id": chat_id, "message_id": msg_id})
@@ -155,8 +174,8 @@ def webhook():
         if len(parts) < 3:
             return 'OK'
         
-        book_type = parts[0]  # student / activity
-        action = parts[1]     # page / original / translated / solved
+        book_type = parts[0]
+        action = parts[1]
         page_num = parts[2]
         
         pages = STUDENT_PAGES if book_type == "student" else ACTIVITY_PAGES
@@ -191,7 +210,6 @@ def webhook():
         })
         return 'OK'
 
-    # معالجة الرسائل النصية
     if 'message' in data:
         chat_id = data['message']['chat']['id']
         text = data['message'].get('text', '')
@@ -200,7 +218,7 @@ def webhook():
             keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً بك!\n📖 طالب: {len(STUDENT_PAGES)} صفحة\n✏️ أنشطة: {len(ACTIVITY_PAGES)} صفحة\nاختر الكتاب 👇",
+                "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
                 "reply_markup": keyboard
             })
         
@@ -218,8 +236,6 @@ def webhook():
         
         elif text.isdigit():
             page_num = text
-            # نفحص أي كتاب تختاره؟ نستخدم آخر كتاب تم اختياره
-            # مبسط: نجرب الطالب أولاً ثم الأنشطة
             if page_num in STUDENT_PAGES:
                 page = STUDENT_PAGES[page_num]
                 title = page.get("title", f"صفحة {page_num}")
@@ -243,7 +259,7 @@ def webhook():
             else:
                 requests.post(URL + '/sendMessage', json={
                     "chat_id": chat_id,
-                    "text": f"❌ الصفحة {page_num} غير موجودة في أي من الكتابين"
+                    "text": f"❌ الصفحة {page_num} غير موجودة"
                 })
         
         else:
