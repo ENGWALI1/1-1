@@ -10,72 +10,63 @@ app = Flask(__name__)
 TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
 
-# ==================== فحص الملفات (تشخيص) ====================
-print("📂 فحص الملفات في المسار الحالي:")
-for file in os.listdir('.'):
-    if file.endswith('.zip'):
-        print(f"  📦 {file} - حجمه: {os.path.getsize(file)} bytes")
-
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
     pages = {}
-    extract_dir = zip_path.replace(".zip", "")  # استخدم اسم الملف كمجلد
+    extract_dir = zip_path.replace(".zip", "")
     
     if not os.path.exists(zip_path):
         print(f"❌ {zip_path} غير موجود")
         return pages
     
-    # فك الضغط فقط إذا المجلد غير موجود
     if not os.path.exists(extract_dir):
-        print(f"📦 فك ضغط {zip_path} إلى {extract_dir}...")
+        print(f"📦 فك ضغط {zip_path}...")
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
         print(f"✅ تم فك الضغط")
     else:
         print(f"✅ المجلد {extract_dir} موجود مسبقاً")
     
-    # البحث عن ملفات JSON في المجلد (بما في ذلك المجلدات الفرعية)
-    json_files = []
+    # البحث عن ملفات JSON
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
-                json_files.append(os.path.join(root, file))
-    
-    print(f"📄 عدد ملفات JSON في {zip_path}: {len(json_files)}")
-    
-    for file_path in json_files:
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                filename = os.path.basename(file_path)
-                page_num = filename.replace("page_", "").replace(".json", "")
-                
-                # إذا كان الرقم ليس رقماً، ابحث عن مفتاح رقمي
-                if not page_num.isdigit() and isinstance(data, dict):
-                    for key in data.keys():
-                        if str(key).isdigit():
-                            page_num = str(key)
-                            data = data[key]
-                            break
-                
-                pages[page_num] = {
-                    "title": data.get("title", f"صفحة {page_num}"),
-                    "content_original": data.get("content_original", data.get("content", "")),
-                    "content_line_by_line": data.get("content_line_by_line", []),
-                    "exercises": data.get("exercises", [])
-                }
-                print(f"  ✅ صفحة {page_num}")
-        except Exception as e:
-            print(f"  ⚠️ خطأ في {file_path}: {e}")
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        
+                        # البيانات قد تكون مباشرة أو داخل مفتاح رقمي
+                        if isinstance(data, dict):
+                            # البحث عن أول مفتاح رقمي (مثل "7", "5" إلخ)
+                            page_num = None
+                            for key in data.keys():
+                                if str(key).isdigit():
+                                    page_num = str(key)
+                                    data = data[key]
+                                    break
+                            
+                            # إذا لم نجد مفتاحاً رقمياً، نستخدم اسم الملف
+                            if not page_num:
+                                page_num = file.replace("page_", "").replace(".json", "")
+                        
+                        pages[page_num] = {
+                            "title": data.get("title", f"صفحة {page_num}"),
+                            "content_original": data.get("content_original", ""),
+                            "content_line_by_line": data.get("content_line_by_line", []),
+                            "exercises": data.get("exercises", [])
+                        }
+                        print(f"  ✅ صفحة {page_num}")
+                except Exception as e:
+                    print(f"  ⚠️ خطأ في {file}: {e}")
     
     return pages
 
 # تحميل الكتابين
-print("\n" + "="*50)
 print("📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
 
-print("\n📚 تحميل كتاب الأنشطة...")
+print("📚 تحميل كتاب الأنشطة...")
 ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
 
 student_list = sorted([int(p) for p in STUDENT_PAGES.keys()])
@@ -86,9 +77,8 @@ STUDENT_MAX = max(student_list) if student_list else 80
 ACTIVITY_MIN = min(activity_list) if activity_list else 1
 ACTIVITY_MAX = max(activity_list) if activity_list else 64
 
-print(f"\n✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
+print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
-print("="*50)
 
 # ==================== دوال عرض المحتوى ====================
 def format_original(content):
