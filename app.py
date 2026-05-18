@@ -3,10 +3,8 @@ import json
 import zipfile
 import shutil
 import re
-import io
 from flask import Flask, request
 import requests
-from pydub import AudioSegment
 
 app = Flask(__name__)
 
@@ -94,9 +92,9 @@ ACTIVITY_MAX = max(activity_list) if activity_list else 64
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
 
-# ==================== دالة تحويل النص إلى صوت (مع دمج الأجزاء) ====================
+# ==================== دالة تحويل النص إلى صوت (نسخة بسيطة) ====================
 def text_to_audio(text, book_type, page_num):
-    """تحويل النص إلى صوت باستخدام Google TTS ودمج الأجزاء"""
+    """تحويل النص إلى صوت - أول 180 حرف فقط"""
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
@@ -120,55 +118,28 @@ def text_to_audio(text, book_type, page_num):
     if not clean_text or len(clean_text.strip()) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
     
+    # أخذ أول 180 حرف فقط
+    clean_text = clean_text[:180]
+    
     audio_filename = f"{book_type}_{page_num}.mp3"
     audio_path = os.path.join(audio_dir, audio_filename)
     
     if os.path.exists(audio_path):
         return audio_path
     
-    # تقسيم النص إلى جمل
-    sentences = re.split(r'(?<=[.!?])\s+', clean_text)
-    chunks = []
-    current_chunk = ""
-    
-    for sentence in sentences:
-        if len(current_chunk) + len(sentence) + 1 <= 180:
-            current_chunk += sentence + " "
-        else:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = sentence + " "
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    
-    if not chunks:
-        return None
-    
     try:
-        combined = None
+        url = "https://translate.google.com/translate_tts"
+        params = {
+            "ie": "UTF-8",
+            "q": clean_text,
+            "tl": "en",
+            "client": "tw-ob"
+        }
+        response = requests.get(url, params=params, timeout=30)
         
-        for chunk in chunks:
-            url = "https://translate.google.com/translate_tts"
-            params = {
-                "ie": "UTF-8",
-                "q": chunk,
-                "tl": "en",
-                "client": "tw-ob"
-            }
-            response = requests.get(url, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                chunk_audio = AudioSegment.from_mp3(io.BytesIO(response.content))
-                if combined is None:
-                    combined = chunk_audio
-                else:
-                    combined += chunk_audio
-            else:
-                print(f"Google TTS error: {response.status_code}")
-                return None
-        
-        if combined:
-            combined.export(audio_path, format="mp3")
+        if response.status_code == 200:
+            with open(audio_path, 'wb') as f:
+                f.write(response.content)
             return audio_path
         return None
     except Exception as e:
