@@ -102,68 +102,61 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_M
 
 # ==================== دالة تحويل النص إلى صوت ====================
 def text_to_audio(text, book_type, page_num, speed="عادي"):
-    """تحويل النص إلى صوت باستخدام Google Translate TTS"""
-    import requests
+    """تحويل النص إلى صوت (نسخة متزامنة باستخدام asyncio.run())"""
+    import asyncio
     
-    audio_dir = "audio"
-    os.makedirs(audio_dir, exist_ok=True)
-    
-    # تنظيف النص
-    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
-    clean_text = clean_text.replace('━', '').replace('|', '')
-    clean_text = re.sub(r'\s+', ' ', clean_text)
-    
-    # استخراج النص الإنجليزي فقط
-    lines = clean_text.split('\n')
-    english_parts = []
-    for line in lines:
-        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
-        total_chars = len(line.strip())
-        if total_chars > 0:
-            arabic_ratio = arabic_chars / total_chars
-            if arabic_ratio < 0.5:
-                english_parts.append(line)
-    
-    clean_text = ' '.join(english_parts)
-    
-    if not clean_text or len(clean_text.strip()) < 10:
-        clean_text = f"Page {page_num} of {book_type} book."
-    
-    # تحديد سرعة الصوت (Google TTS لا يدعم السرعة، نضيفها عبر معامل)
-    speed_map = {"بطيء": "slow", "عادي": "normal", "سريع": "fast"}
-    
-    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
-    audio_path = os.path.join(audio_dir, audio_filename)
-    
-    if os.path.exists(audio_path):
-        return audio_path
-    
-    try:
-        # استخدام Google Translate TTS
-        url = "https://translate.google.com/translate_tts"
-        params = {
-            "ie": "UTF-8",
-            "q": clean_text[:200],  # حد أقصى 200 حرف
-            "tl": "en",
-            "client": "tw-ob"
-        }
-        response = requests.get(url, params=params, timeout=30)
+    async def _get_audio():
+        audio_dir = "audio"
+        os.makedirs(audio_dir, exist_ok=True)
         
-        if response.status_code == 200:
-            with open(audio_path, 'wb') as f:
-                f.write(response.content)
-            return audio_path
-        else:
-            print(f"Google TTS error: {response.status_code}")
+        # تنظيف النص (نفس الكود القديم)
+        clean_text = text.replace('*', '').replace('_', '').replace('`', '')
+        clean_text = clean_text.replace('━━', '').replace('**', '').replace('|', '')
+        clean_text = re.sub(r'\s+', ' ', clean_text)
+        
+        lines = clean_text.split('\n')
+        english_parts = []
+        for line in lines:
+            arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
+            total_chars = len(line.strip())
+            if total_chars > 0:
+                arabic_ratio = arabic_chars / total_chars
+                if arabic_ratio < 0.5:
+                    english_parts.append(line)
+        
+        clean_text = ' '.join(english_parts)
+        
+        if not clean_text or len(clean_text.strip()) < 10:
+            clean_text = f"Page {page_num} of {book_type} book."
+        
+        rate_map = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
+        rate = rate_map.get(speed, "-15%")
+        
+        audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
+        final_audio_path = os.path.join(audio_dir, audio_filename)
+        
+        if os.path.exists(final_audio_path):
+            return final_audio_path
+        
+        try:
+            voice = "en-US-JennyNeural"
+            communicate = edge_tts.Communicate(clean_text[:3000], voice, rate=rate)
+            await communicate.save(final_audio_path)
+            return final_audio_path
+        except Exception as e:
+            print(f"خطأ في الصوت: {e}")
             return None
+    
+    # تشغيل الدالة غير المتزامنة
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_get_audio())
+        loop.close()
+        return result
     except Exception as e:
-        print(f"خطأ في الصوت: {e}")
+        print(f"خطأ في تشغيل asyncio: {e}")
         return None
-
-# ==================== دوال عرض المحتوى ====================
-def format_original(content):
-    if not content:
-        return "لا يوجد محتوى نصي"
     
     content = content.replace("---", "\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
     content = content.replace("Grammar", "\n📚 **Grammar**\n")
