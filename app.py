@@ -3,6 +3,8 @@ import json
 import zipfile
 import shutil
 import re
+import asyncio
+import edge_tts
 from flask import Flask, request
 import requests
 
@@ -92,9 +94,9 @@ ACTIVITY_MAX = max(activity_list) if activity_list else 64
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
 
-# ==================== دالة تحويل النص إلى صوت (نسخة بسيطة) ====================
+# ==================== دالة تحويل النص إلى صوت (edge-tts) ====================
 def text_to_audio(text, book_type, page_num):
-    """تحويل النص إلى صوت - أول 180 حرف فقط"""
+    """تحويل النص إلى صوت باستخدام edge-tts (يدعم النصوص الطويلة)"""
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
@@ -118,32 +120,29 @@ def text_to_audio(text, book_type, page_num):
     if not clean_text or len(clean_text.strip()) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
     
-    # أخذ أول 180 حرف فقط
-    clean_text = clean_text[:180]
-    
     audio_filename = f"{book_type}_{page_num}.mp3"
     audio_path = os.path.join(audio_dir, audio_filename)
     
     if os.path.exists(audio_path):
         return audio_path
     
-    try:
-        url = "https://translate.google.com/translate_tts"
-        params = {
-            "ie": "UTF-8",
-            "q": clean_text,
-            "tl": "en",
-            "client": "tw-ob"
-        }
-        response = requests.get(url, params=params, timeout=30)
-        
-        if response.status_code == 200:
-            with open(audio_path, 'wb') as f:
-                f.write(response.content)
+    async def _generate_audio():
+        try:
+            communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural")
+            await communicate.save(audio_path)
             return audio_path
-        return None
+        except Exception as e:
+            print(f"خطأ في edge-tts: {e}")
+            return None
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_generate_audio())
+        loop.close()
+        return result
     except Exception as e:
-        print(f"خطأ في الصوت: {e}")
+        print(f"خطأ في تشغيل asyncio: {e}")
         return None
 
 # ==================== دوال عرض المحتوى ====================
