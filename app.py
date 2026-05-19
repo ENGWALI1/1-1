@@ -19,6 +19,8 @@ if not TOKEN:
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469
+
+# ==================== القوائم ====================
 unsubscribed_menu = {
     "keyboard": [
         ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
@@ -44,6 +46,8 @@ admin_menu = {
     ],
     "resize_keyboard": True
 }
+
+# ==================== نظام الاشتراك ====================
 def load_subs():
     try:
         with open("subs.json", 'r') as f:
@@ -78,7 +82,9 @@ def get_user_menu(user_id):
         return subscribed_menu
     else:
         return unsubscribed_menu
-        def load_pages_from_zip(zip_path):
+
+# ==================== فك ضغط وتحميل البيانات ====================
+def load_pages_from_zip(zip_path):
     pages = {}
     extract_dir = zip_path.replace(".zip", "")
     
@@ -113,7 +119,10 @@ def get_user_menu(user_id):
                     pass
     return pages
 
+print("📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
+
+print("📚 تحميل كتاب الأنشطة...")
 ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
@@ -124,18 +133,38 @@ STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
 ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
-print(f"📚 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
-print(f"📚 كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
+print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
+print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
+
+# ==================== دوال العرض والصوت ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
     content = content.replace("---", "\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
-    content = content.replace("Grammar", "\n📚 Grammar\n")
-    content = content.replace("Listening", "\n🎧 Listening\n")
-    content = content.replace("Speaking", "\n💬 Speaking\n")
-    content = content.replace("Reading", "\n📖 Reading\n")
-    content = content.replace("Writing", "\n✏️ Writing\n")
+    content = content.replace("Grammar", "\n📚 **Grammar**\n")
+    content = content.replace("Listening", "\n🎧 **Listening**\n")
+    content = content.replace("Speaking", "\n💬 **Speaking**\n")
+    content = content.replace("Reading", "\n📖 **Reading**\n")
+    content = content.replace("Writing", "\n✏️ **Writing**\n")
     return content[:4000]
+
+def format_translation(lines):
+    if not lines:
+        return "لا توجد ترجمة"
+    result = ""
+    for item in lines:
+        result += f"📖 **{item.get('en', '')}**\n🌐 {item.get('ar', '')}\n\n"
+    return result
+
+def format_exercises(exercises):
+    if not exercises:
+        return "لا توجد تمارين"
+    result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    for i, ex in enumerate(exercises, 1):
+        text = ex.get('text', ex.get('question', f'سؤال {i}'))
+        answer = ex.get('answer', '---')
+        result += f"**{i}. {text}**\n✅ {answer}\n\n"
+    return result
 
 def text_to_audio(text, book_type, page_num):
     audio_dir = "audio"
@@ -145,7 +174,7 @@ def text_to_audio(text, book_type, page_num):
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
     
     if len(clean_text) < 10:
-        clean_text = f"Page {page_num}"
+        clean_text = f"Page {page_num} of {book_type} book."
     
     audio_path = os.path.join(audio_dir, f"{book_type}_{page_num}.mp3")
     
@@ -153,8 +182,12 @@ def text_to_audio(text, book_type, page_num):
         return audio_path
     
     async def _gen():
-        await edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural").save(audio_path)
-        return audio_path
+        try:
+            communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural")
+            await communicate.save(audio_path)
+            return audio_path
+        except:
+            return None
     
     try:
         loop = asyncio.new_event_loop()
@@ -164,7 +197,41 @@ def text_to_audio(text, book_type, page_num):
         return result
     except:
         return None
-        def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+
+def get_page_buttons(book_type, page_num, mode, min_page, max_page):
+    buttons = []
+    prefix = "student" if book_type == "student" else "activity"
+    
+    nav = []
+    if int(page_num) > min_page:
+        nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
+    if int(page_num) < max_page:
+        nav.append({"text": "التالي ▶️", "callback_data": f"{prefix}_page_{int(page_num)+1}"})
+    if nav:
+        buttons.append(nav)
+    
+    if mode == 'original':
+        buttons.append([
+            {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
+            {"text": "🔊 الصوت", "callback_data": f"audio_{prefix}_{page_num}"},
+            {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
+        ])
+    elif mode == 'translated':
+        buttons.append([
+            {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
+            {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
+        ])
+    else:
+        buttons.append([
+            {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
+            {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
+        ])
+    
+    buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
+    return {"inline_keyboard": buttons}
+
+# ==================== دوال المساعدة ====================
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "text": text}
     if reply_markup:
         data["reply_markup"] = reply_markup
@@ -180,14 +247,50 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
         data["parse_mode"] = parse_mode
     requests.post(URL + "/editMessageText", json=data)
 
-def answer_callback(callback_id, text=None):
-    data = {"callback_query_id": callback_id}
-    if text:
-        data["text"] = text
-    requests.post(URL + "/answerCallbackQuery", json=data)
-    @app.route('/')
+# ==================== دوال الاشتراك ====================
+def show_pending_requests(chat_id, user_id):
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
+        return
+    
+    pending = load_pending()
+    if not pending:
+        send_message(chat_id, "📭 لا توجد طلبات اشتراك معلقة.")
+        return
+    
+    text = "📋 **طلبات الاشتراك المعلقة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    for inv_id, p in pending.items():
+        text += f"\n📌 رقم الطلب: `{inv_id}`\n"
+        text += f"👤 {p.get('first_name', p.get('username', 'بدون'))}\n"
+        text += f"🆔 `{p['user_id']}`\n"
+        text += f"💰 {p.get('amount', 50)} ل.س\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    send_message(chat_id, text, parse_mode="Markdown")
+
+def show_active_subscriptions(chat_id, user_id):
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
+        return
+    
+    subs = load_subs()
+    if not subs:
+        send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
+        return
+    
+    text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    for uid, expiry in subs.items():
+        expiry_date = expiry[:10] if expiry else "غير محدد"
+        text += f"🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n\n"
+    send_message(chat_id, text, parse_mode="Markdown")
+
+def contact_teacher(chat_id):
+    keyboard = {"inline_keyboard": [[{"text": "🛠️ الدعم الفني", "url": "https://t.me/ENGWALI1"}]]}
+    send_message(chat_id, "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:", keyboard)
+
+# ==================== معالج Webhook ====================
+@app.route('/')
 def home():
-    return "Bot is running"
+    return "🤖 Bot is running!"
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
@@ -195,7 +298,7 @@ def webhook():
     if not data:
         return "OK"
     
-    # معالجة الأزرار
+    # معالجة الأزرار (callback_query)
     if 'callback_query' in data:
         cb = data['callback_query']
         cb_data = cb['data']
@@ -214,8 +317,8 @@ def webhook():
                 save_subs(subs)
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, "✅ تم قبول الاشتراك")
-                send_message(user_id, "🎉 تم تفعيل اشتراكك بنجاح!")
+                edit_message(chat_id, msg_id, "✅ تم قبول الاشتراك وتفعيل المستخدم.")
+                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.", parse_mode="Markdown")
             return "OK"
         
         # رفض اشتراك
@@ -226,34 +329,84 @@ def webhook():
                 user_id = pending[invoice_id]["user_id"]
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, "❌ تم رفض الاشتراك")
-                send_message(user_id, "❌ لم يتم قبول طلب الاشتراك")
+                edit_message(chat_id, msg_id, "❌ تم رفض طلب الاشتراك.")
+                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\n\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.", parse_mode="Markdown")
             return "OK"
         
-        # زر الرئيسية
+        # القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
             edit_message(chat_id, msg_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
         
+        # تشغيل الصوت
+        if cb_data.startswith("audio_"):
+            parts = cb_data.split("_")
+            prefix = parts[1]
+            page_num = parts[2]
+            
+            send_message(chat_id, "🎵 جاري تجهيز الصوت...")
+            
+            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
+            if page_num in pages:
+                text = pages[page_num].get("content_original", "")
+                audio_path = text_to_audio(text, prefix, page_num)
+                
+                if audio_path and os.path.exists(audio_path):
+                    with open(audio_path, 'rb') as audio:
+                        requests.post(URL + "/sendVoice", files={"voice": audio}, data={"chat_id": chat_id})
+                else:
+                    send_message(chat_id, "❌ عذراً، حدث خطأ في إنشاء الصوت")
+            return "OK"
+        
         # أزرار التنقل والترجمة والتمارين
-        # ... (سأضيفها لاحقاً)
+        parts = cb_data.split("_")
+        if len(parts) >= 3:
+            book_type = "student" if parts[0] == "student" else "activity"
+            action = parts[1]
+            page_num = parts[2]
+            
+            pages = STUDENT_PAGES if book_type == "student" else ACTIVITY_PAGES
+            min_page = STUDENT_MIN if book_type == "student" else ACTIVITY_MIN
+            max_page = STUDENT_MAX if book_type == "student" else ACTIVITY_MAX
+            
+            if page_num in pages:
+                page = pages[page_num]
+                title = page.get("title", f"صفحة {page_num}")
+                
+                if action == "original" or action == "page":
+                    content = format_text(page.get("content_original", ""))
+                    mode = "original"
+                elif action == "translated":
+                    content = format_translation(page.get("content_line_by_line", []))
+                    mode = "translated"
+                elif action == "solved":
+                    content = format_exercises(page.get("exercises", []))
+                    mode = "solved"
+                else:
+                    content = format_text(page.get("content_original", ""))
+                    mode = "original"
+                
+                edit_message(chat_id, msg_id, 
+                    f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                    get_page_buttons(book_type, page_num, mode, min_page, max_page),
+                    "Markdown")
         
         return "OK"
     
-    # معالجة الرسائل
+    # معالجة الرسائل النصية
     if 'message' in data:
         msg = data['message']
         chat_id = msg['chat']['id']
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # أمر /start أو الرئيسية
+        # بدء أو الرئيسية
         if text == '/start' or text == "🏠 الرئيسية":
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
         
-        # زر الاشتراك
+        # اشتراك
         elif text == "💳 اشتراك":
             invoice_id = random.randint(100000, 999999)
             pending = load_pending()
@@ -273,13 +426,18 @@ def webhook():
             }
             
             send_message(chat_id, 
-                "✅ تم استلام طلب اشتراكك!\n\n"
-                "📞 أرسل المبلغ (50 ل.س) إلى سيريتل كاش: 15570270\n\n"
-                "📌 بعد إتمام التحويل، سيتم تفعيل اشتراكك.")
+                "✅ **تم استلام طلب اشتراكك!**\n\n"
+                "📞 أرسل المبلغ (50 ل.س) إلى سيريتل كاش: `15570270`\n\n"
+                "📌 بعد إتمام التحويل، سيتم تفعيل اشتراكك.",
+                parse_mode="Markdown")
             
             send_message(ADMIN_ID, 
-                f"🔔 طلب اشتراك جديد\n👤 {msg['from'].get('first_name', '')}\n🆔 {user_id}",
-                keyboard)
+                f"🔔 **طلب اشتراك جديد**\n"
+                f"👤 {msg['from'].get('first_name', '')}\n"
+                f"🆔 `{user_id}`\n"
+                f"💰 50 ل.س",
+                keyboard,
+                "Markdown")
         
         # كتاب الطالب
         elif text == "📖 كتاب الطالب":
@@ -289,25 +447,50 @@ def webhook():
         elif text == "✏️ كتاب الأنشطة":
             send_message(chat_id, f"✏️ أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
         
-        # إذا كان الرقم
+        # القواعد
+        elif text == "📚 القواعد":
+            send_message(chat_id, "📚 قائمة القواعد (قيد التطوير)")
+        
+        # طلبات الاشتراك (للأدمن)
+        elif text == "📋 طلبات الاشتراك":
+            show_pending_requests(chat_id, user_id)
+        
+        # المشتركين (للأدمن)
+        elif text == "👥 المشتركين":
+            show_active_subscriptions(chat_id, user_id)
+        
+        # الدعم الفني
+        elif text == "🛠️ الدعم الفني":
+            contact_teacher(chat_id)
+        
+        # إذا كان رقماً (صفحة)
         elif text.isdigit():
             if text in STUDENT_PAGES:
                 page = STUDENT_PAGES[text]
                 content = format_text(page.get("content_original", ""))
-                send_message(chat_id, f"📖 {page['title']}\n\n{content}")
+                send_message(chat_id, 
+                    f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                    get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX),
+                    "Markdown")
             elif text in ACTIVITY_PAGES:
                 page = ACTIVITY_PAGES[text]
                 content = format_text(page.get("content_original", ""))
-                send_message(chat_id, f"✏️ {page['title']}\n\n{content}")
+                send_message(chat_id, 
+                    f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                    get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX),
+                    "Markdown")
             else:
                 send_message(chat_id, f"❌ الصفحة {text} غير موجودة")
         
+        # أي شيء آخر
         else:
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "اختر من القائمة 👇", keyboard)
     
     return "OK"
-    if __name__ == '__main__':
+
+# ==================== التشغيل ====================
+if __name__ == '__main__':
     if not os.path.exists("subs.json"):
         save_subs({})
     if not os.path.exists("pending.json"):
