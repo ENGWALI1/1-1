@@ -7,6 +7,8 @@ import asyncio
 import random
 import edge_tts
 from flask import Flask, request
+import logging
+logging.basicConfig(level=logging.INFO)
 import requests
 from datetime import datetime, timedelta
 
