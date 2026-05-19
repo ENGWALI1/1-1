@@ -164,12 +164,38 @@ def format_translation(lines):
 
 def format_exercises(exercises):
     if not exercises:
-        return "لا توجد تمارين"
+        return "لا توجد تمارين في هذه الصفحة"
+    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
     for i, ex in enumerate(exercises, 1):
-        text = ex.get('text', ex.get('question', f'سؤال {i}'))
-        answer = ex.get('answer', '---')
-        result += f"**{i}. {text}**\n✅ {answer}\n\n"
+        # محاولة استخراج السؤال
+        question = ex.get('text', ex.get('question', ex.get('q', '')))
+        if not question:
+            # إذا كان المفتاح رقماً
+            for key in ex.keys():
+                if str(key).isdigit():
+                    question = ex[key]
+                    break
+        
+        # محاولة استخراج الجواب
+        answer = ex.get('answer', ex.get('a', ex.get('solution', ex.get('correct', '---'))))
+        
+        # إذا كان الجواب قائمة (مثل تمرين مطابقة)
+        if isinstance(answer, list):
+            answer = ', '.join(str(a) for a in answer)
+        
+        # إذا كان الجواب منطقياً (True/False)
+        if isinstance(answer, bool):
+            answer = "صحيح" if answer else "خطأ"
+        
+        # إضافة التمرين إلى النتيجة
+        if question:
+            result += f"**{i}. {question}**\n✅ {answer}\n\n"
+        else:
+            # إذا لم نجد سؤالاً، نعرض التمرين كاملاً
+            result += f"**{i}. {str(ex)[:200]}**\n\n"
+    
     return result
 
 def text_to_audio(text, book_type, page_num):
