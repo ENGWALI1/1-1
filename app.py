@@ -7,14 +7,67 @@ import asyncio
 import edge_tts
 from flask import Flask, request
 import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
 TOKEN = os.environ['BOT_TOKEN']
 URL = f"https://api.telegram.org/bot{TOKEN}"
+ADMIN_ID = 1662780469
 
-# تخزين حالة المستخدمين
-user_book_choice = {}
+# ==================== القوائم ====================
+unsubscribed_menu = {
+    "keyboard": [
+        ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
+        ["📚 القواعد", "💳 اشتراك", "🛠️ الدعم الفني", "🏠 الرئيسية"]
+    ],
+    "resize_keyboard": True
+}
+
+subscribed_menu = {
+    "keyboard": [
+        ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
+        ["📚 القواعد", "🛠️ الدعم الفني", "🏠 الرئيسية"]
+    ],
+    "resize_keyboard": True
+}
+
+admin_menu = {
+    "keyboard": [
+        ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
+        ["📚 القواعد", "💳 اشتراك"],
+        ["📋 طلبات الاشتراك", "👥 المشتركين"],
+        ["🛠️ الدعم الفني", "🏠 الرئيسية"]
+    ],
+    "resize_keyboard": True
+}
+
+# ==================== نظام الاشتراك ====================
+def load_subs():
+    subs_path = "subs.json"
+    if os.path.exists(subs_path):
+        with open(subs_path, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_subs(data):
+    with open("subs.json", 'w') as f:
+        json.dump(data, f, indent=2)
+
+def is_subscribed(user_id):
+    subs = load_subs()
+    expiry = subs.get(str(user_id))
+    if expiry and datetime.now().isoformat() < expiry:
+        return True
+    return False
+
+def get_user_menu(user_id):
+    if user_id == ADMIN_ID:
+        return admin_menu
+    elif is_subscribed(user_id):
+        return subscribed_menu
+    else:
+        return unsubscribed_menu
 
 # ==================== فك ضغط وقراءة صفحات الكتاب ====================
 def load_pages_from_zip(zip_path):
@@ -247,6 +300,75 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
 
+# ==================== أوامر البوت ====================
+async def subscription_menu(update, context):
+    await update.message.reply_text(
+        "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "1 شهر = 50 ل.س\n\n"
+        "للاستفادة من:\n"
+        "✓ الوصول الكامل إلى جميع الكتب\n"
+        "✓ الترجمة الكاملة\n"
+        "✓ حلول التمارين النموذجية\n"
+        "✓ الوصول إلى جميع الاختبارات\n"
+        "✓ خاصية الصوت\n\n"
+        "📞 أرسل المبلغ إلى سيريتل كاش: 15570270\n"
+        "ثم أرسل /activate لتفعيل اشتراكك",
+        parse_mode='Markdown'
+    )
+
+async def contact_teacher(update, context):
+    keyboard = {"inline_keyboard": [[{"text": "🛠️ الدعم الفني", "url": "https://t.me/ENGWALI1"}]]}
+    await update.message.reply_text(
+        "🛠️ **الدعم الفني**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "اضغط على الزر أدناه للتواصل مع الدعم الفني.",
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
+
+async def show_pending_requests(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ هذا الأمر للمسؤول فقط.")
+        return
+    # TODO: إضافة منطق طلبات الاشتراك
+    await update.message.reply_text("📋 قائمة طلبات الاشتراك المعلقة (قيد التطوير)")
+
+async def show_active_subscriptions(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ هذا الأمر للمسؤول فقط.")
+        return
+    subs = load_subs()
+    if not subs:
+        await update.message.reply_text("📭 لا يوجد مشتركين حالياً.")
+        return
+    text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    for uid, expiry in subs.items():
+        expiry_date = expiry[:10] if expiry else "غير محدد"
+        text += f"🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n\n"
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+async def activate_command(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("للمسؤول فقط.")
+        return
+    try:
+        if not context.args:
+            await update.message.reply_text("الاستخدام: /activate USER_ID:1_month")
+            return
+        text = " ".join(context.args)
+        user_id_str, plan = text.split(":")
+        if plan != "1_month":
+            await update.message.reply_text("❌ باقة خاطئة. اختر: 1_month")
+            return
+        user_id = int(user_id_str)
+        expiry = (datetime.now() + timedelta(days=30)).isoformat()
+        subs = load_subs()
+        subs[str(user_id)] = expiry
+        save_subs(subs)
+        await update.message.reply_text(f"✅ تم تفعيل المستخدم {user_id} لمدة 30 يوماً.")
+        await context.bot.send_message(chat_id=user_id, text="🎉 تم تفعيل اشتراكك بنجاح!")
+    except:
+        await update.message.reply_text("❌ خطأ. استخدم: /activate USER_ID:1_month")
+
 # ==================== إعداد الـ Webhook ====================
 @app.route('/')
 def home():
@@ -265,16 +387,24 @@ def webhook():
         msg_id = callback['message']['message_id']
         cb_data = callback['data']
         
-        # تشغيل الصوت
+        if cb_data == "main_menu":
+            keyboard = get_user_menu(chat_id)
+            requests.post(URL + '/sendMessage', json={
+                "chat_id": chat_id,
+                "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر من القائمة 👇",
+                "reply_markup": keyboard
+            })
+            requests.post(URL + '/deleteMessage', json={"chat_id": chat_id, "message_id": msg_id})
+            return 'OK'
+        
         if cb_data.startswith("audio_"):
             parts = cb_data.split("_")
             prefix = parts[1]
             page_num = parts[2]
             
-            # إشعار
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": "🎵 جاري تجهيز الصوت، انتظر قليلاً..."
+                "text": "🎵 جاري تجهيز الصوت..."
             })
             
             pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
@@ -284,23 +414,12 @@ def webhook():
                 
                 if audio_path and os.path.exists(audio_path):
                     with open(audio_path, 'rb') as audio:
-                        files = {'voice': audio}
-                        requests.post(URL + '/sendVoice', files=files, data={"chat_id": chat_id})
+                        requests.post(URL + '/sendVoice', files={'voice': audio}, data={"chat_id": chat_id})
                 else:
                     requests.post(URL + '/sendMessage', json={
                         "chat_id": chat_id,
                         "text": "❌ عذراً، حدث خطأ في إنشاء الصوت"
                     })
-            return 'OK'
-        
-        if cb_data == "main_menu":
-            keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
-            requests.post(URL + '/sendMessage', json={
-                "chat_id": chat_id,
-                "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
-                "reply_markup": keyboard
-            })
-            requests.post(URL + '/deleteMessage', json={"chat_id": chat_id, "message_id": msg_id})
             return 'OK'
         
         parts = cb_data.split("_")
@@ -349,83 +468,128 @@ def webhook():
         text = data['message'].get('text', '')
         user_id = data['message']['from']['id']
         
-        if text == '/start':
-            keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
+        if text == '/start' or text == "🏠 الرئيسية":
+            keyboard = get_user_menu(user_id)
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": f"🎉 مرحباً!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر الكتاب 👇",
+                "text": f"🎉 مرحباً بك!\n📖 طالب: {len(STUDENT_PAGES)}\n✏️ أنشطة: {len(ACTIVITY_PAGES)}\nاختر من القائمة 👇",
                 "reply_markup": keyboard
             })
-            user_book_choice.pop(user_id, None)
         
         elif text == "📖 كتاب الطالب":
-            user_book_choice[user_id] = "student"
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
                 "text": f"📖 أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):"
             })
         
         elif text == "✏️ كتاب الأنشطة":
-            user_book_choice[user_id] = "activity"
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
                 "text": f"✏️ أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):"
             })
         
-        elif text.isdigit():
-            page_num = text
-            selected_book = user_book_choice.get(user_id)
-            
-            if selected_book == "student":
-                if page_num in STUDENT_PAGES:
-                    page = STUDENT_PAGES[page_num]
-                    title = page.get("title", f"صفحة {page_num}")
-                    content = format_original(page.get("content_original", ""))
-                    requests.post(URL + '/sendMessage', json={
-                        "chat_id": chat_id,
-                        "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                        "reply_markup": get_page_buttons("student", page_num, 'original', STUDENT_MIN, STUDENT_MAX),
-                        "parse_mode": "Markdown"
-                    })
-                else:
-                    requests.post(URL + '/sendMessage', json={
-                        "chat_id": chat_id,
-                        "text": f"❌ الصفحة {page_num} غير موجودة في كتاب الطالب\n📚 الصفحات المتوفرة: {student_list}"
-                    })
-            
-            elif selected_book == "activity":
-                if page_num in ACTIVITY_PAGES:
-                    page = ACTIVITY_PAGES[page_num]
-                    title = page.get("title", f"صفحة {page_num}")
-                    content = format_original(page.get("content_original", ""))
-                    requests.post(URL + '/sendMessage', json={
-                        "chat_id": chat_id,
-                        "text": f"✏️ **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
-                        "reply_markup": get_page_buttons("activity", page_num, 'original', ACTIVITY_MIN, ACTIVITY_MAX),
-                        "parse_mode": "Markdown"
-                    })
-                else:
-                    requests.post(URL + '/sendMessage', json={
-                        "chat_id": chat_id,
-                        "text": f"❌ الصفحة {page_num} غير موجودة في كتاب الأنشطة\n📚 الصفحات المتوفرة: {activity_list}"
-                    })
-            
+        elif text == "📚 القواعد":
+            requests.post(URL + '/sendMessage', json={
+                "chat_id": chat_id,
+                "text": "📚 قائمة القواعد (قيد التطوير)"
+            })
+        
+        elif text == "💳 اشتراك":
+            keyboard = get_user_menu(user_id)
+            requests.post(URL + '/sendMessage', json={
+                "chat_id": chat_id,
+                "text": "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n1 شهر = 50 ل.س\n\nللاستفادة من:\n✓ الوصول الكامل إلى جميع الكتب\n✓ الترجمة الكاملة\n✓ حلول التمارين النموذجية\n✓ الوصول إلى جميع الاختبارات\n✓ خاصية الصوت\n\n📞 أرسل المبلغ إلى سيريتل كاش: 15570270\nثم أرسل /activate لتفعيل اشتراكك",
+                "parse_mode": "Markdown",
+                "reply_markup": keyboard
+            })
+        
+        elif text == "🛠️ الدعم الفني":
+            keyboard = {"inline_keyboard": [[{"text": "🛠️ الدعم الفني", "url": "https://t.me/ENGWALI1"}]]}
+            requests.post(URL + '/sendMessage', json={
+                "chat_id": chat_id,
+                "text": "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:",
+                "reply_markup": keyboard
+            })
+        
+        elif text == "📋 طلبات الاشتراك":
+            if user_id == ADMIN_ID:
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": "📋 قائمة طلبات الاشتراك (قيد التطوير)"
+                })
             else:
                 requests.post(URL + '/sendMessage', json={
                     "chat_id": chat_id,
-                    "text": "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)"
+                    "text": "❌ هذا الأمر للمسؤول فقط."
+                })
+        
+        elif text == "👥 المشتركين":
+            if user_id == ADMIN_ID:
+                subs = load_subs()
+                if not subs:
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": "📭 لا يوجد مشتركين حالياً."
+                    })
+                else:
+                    result = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    for uid, expiry in subs.items():
+                        expiry_date = expiry[:10] if expiry else "غير محدد"
+                        result += f"🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n\n"
+                    requests.post(URL + '/sendMessage', json={
+                        "chat_id": chat_id,
+                        "text": result,
+                        "parse_mode": "Markdown"
+                    })
+            else:
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": "❌ هذا الأمر للمسؤول فقط."
+                })
+        
+        elif text.isdigit():
+            page_num = text
+            if page_num in STUDENT_PAGES:
+                page = STUDENT_PAGES[page_num]
+                title = page.get("title", f"صفحة {page_num}")
+                content = format_original(page.get("content_original", ""))
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
+                    "reply_markup": get_page_buttons("student", page_num, 'original', STUDENT_MIN, STUDENT_MAX),
+                    "parse_mode": "Markdown"
+                })
+            elif page_num in ACTIVITY_PAGES:
+                page = ACTIVITY_PAGES[page_num]
+                title = page.get("title", f"صفحة {page_num}")
+                content = format_original(page.get("content_original", ""))
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": f"✏️ **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content[:4000]}",
+                    "reply_markup": get_page_buttons("activity", page_num, 'original', ACTIVITY_MIN, ACTIVITY_MAX),
+                    "parse_mode": "Markdown"
+                })
+            else:
+                requests.post(URL + '/sendMessage', json={
+                    "chat_id": chat_id,
+                    "text": f"❌ الصفحة {page_num} غير موجودة"
                 })
         
         else:
-            keyboard = {"keyboard": [["📖 كتاب الطالب", "✏️ كتاب الأنشطة"]], "resize_keyboard": True}
+            keyboard = get_user_menu(user_id)
             requests.post(URL + '/sendMessage', json={
                 "chat_id": chat_id,
-                "text": "اضغط على أحد الكتابين 👇",
+                "text": "اختر من القائمة 👇",
                 "reply_markup": keyboard
             })
     
     return 'OK'
 
 if __name__ == '__main__':
+    # إنشاء ملف subs.json إذا لم يكن موجوداً
+    if not os.path.exists("subs.json"):
+        with open("subs.json", 'w') as f:
+            json.dump({}, f)
+    
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
