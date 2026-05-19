@@ -237,6 +237,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
     prefix = "student" if book_type == "student" else "activity"
     
+    # أزرار التنقل
     nav = []
     if int(page_num) > min_page:
         nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
@@ -245,6 +246,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     if nav:
         buttons.append(nav)
     
+    # أزرار الترجمة والصوت وحل التمارين
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
@@ -262,7 +264,9 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
         ])
     
+    # زر القائمة الرئيسية
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
+    
     return {"inline_keyboard": buttons}
 
 # ==================== دوال مساعدة ====================
@@ -281,6 +285,9 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     if parse_mode:
         data["parse_mode"] = parse_mode
     requests.post(URL + "/editMessageText", json=data)
+
+def delete_message(chat_id, message_id):
+    requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
 
 # ==================== دوال الاشتراك ====================
 def show_pending_requests(chat_id, user_id):
@@ -316,8 +323,11 @@ def show_active_subscriptions(chat_id, user_id):
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for uid, expiry in subs.items():
         expiry_date = expiry[:10] if expiry else "غير محدد"
-        days_left = (datetime.fromisoformat(expiry) - datetime.now()).days
-        text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n📆 متبقي: {days_left} يوم\n"
+        try:
+            days_left = (datetime.fromisoformat(expiry) - datetime.now()).days
+            text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n📆 متبقي: {days_left} يوم\n"
+        except:
+            text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
 def contact_teacher(chat_id):
@@ -345,7 +355,9 @@ def webhook():
         # ✅ زر القائمة الرئيسية (أول شرط)
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
-            edit_message(chat_id, msg_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
+            # حذف الرسالة القديمة وإرسال رسالة جديدة
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
         
         # اختيار الباقة
