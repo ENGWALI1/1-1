@@ -22,6 +22,9 @@ ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 
+# تخزين اختيار المستخدم (student أو activity)
+user_book_choice = {}
+
 # ==================== القوائم ====================
 unsubscribed_menu = {
     "keyboard": [
@@ -159,23 +162,16 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
-    """دالة متطورة تقرأ جميع أنواع التمارين"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
     
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, ex in enumerate(exercises, 1):
-        # إذا كان التمرين نصاً عادياً
         if isinstance(ex, str):
             result += f"**{i}. {ex[:200]}**\n\n"
-        
-        # إذا كان التمرين قاموساً
         elif isinstance(ex, dict):
-            # تحديد نوع التمرين
             ex_type = ex.get('type', '')
-            
-            # تمرين محادثة (speaking)
             if ex_type == 'speaking':
                 questions = ex.get('questions', [])
                 answers = ex.get('answers', [])
@@ -185,45 +181,19 @@ def format_exercises(exercises):
                     if j < len(answers):
                         result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
                     result += "\n"
-            
-            # تمرين مطابقة (matching)
             elif ex_type == 'matching':
                 result += f"**🔗 تمرين المزاوجة {i}:**\n"
                 result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
-            
-            # تمرين عادي
             else:
-                # البحث عن السؤال
-                question = (ex.get('text') or ex.get('question') or ex.get('q') or 
-                           ex.get('sentence') or ex.get('prompt') or f'سؤال {i}')
-                
-                # البحث عن الجواب
-                answer = (ex.get('answer') or ex.get('a') or ex.get('solution') or 
-                         ex.get('correct') or ex.get('response') or '---')
-                
-                # إذا كان الجواب قائمة
+                question = ex.get('text') or ex.get('question') or ex.get('q') or f'سؤال {i}'
+                answer = ex.get('answer') or ex.get('a') or ex.get('solution') or ex.get('correct') or '---'
                 if isinstance(answer, list):
-                    if len(answer) <= 5:
-                        answer = ', '.join(str(a) for a in answer)
-                    else:
-                        answer = '\n   • ' + '\n   • '.join(str(a) for a in answer[:10])
-                        answer = f"• {answer}"
-                
-                # إذا كان الجواب منطقياً (True/False)
+                    answer = ', '.join(str(a) for a in answer)
                 if isinstance(answer, bool):
                     answer = "صحيح" if answer else "خطأ"
-                
-                # تنظيف الجواب من الرموز الزائدة
-                if isinstance(answer, str):
-                    answer = answer.replace('*', '').replace('_', '')
-                
                 result += f"**{i}. {question}**\n✅ {answer}\n\n"
-        
-        # إذا كان التمرين قائمة
         elif isinstance(ex, list):
             result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
-        
-        # أي نوع آخر
         else:
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     
@@ -369,24 +339,18 @@ def webhook():
         chat_id = cb['message']['chat']['id']
         msg_id = cb['message']['message_id']
         
-        # اختيار الباقة
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
-            
             numbers_text = "\n".join(SYRIATEL_NUMBERS)
             edit_message(chat_id, msg_id,
                 f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
-                f"💰 المبلغ: {amount} ل.س\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💰 المبلغ: {amount} ل.س\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
-                f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
-                f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
-                f"مثال: `600044062208`",
+                f"🔄 الرجاء إرسال المبلغ ثم أرسل رقم العملية",
                 parse_mode="Markdown")
             return "OK"
         
-        # قبول اشتراك
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -398,11 +362,10 @@ def webhook():
                 save_subs(subs)
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, f"✅ **تم تفعيل الاشتراك بنجاح!**\n👤 المستخدم: `{user_id}`", parse_mode="Markdown")
-                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"✅ تم تفعيل الاشتراك", parse_mode="Markdown")
+                send_message(user_id, "🎉 تم تفعيل اشتراكك بنجاح!", parse_mode="Markdown")
             return "OK"
         
-        # رفض اشتراك
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -410,29 +373,24 @@ def webhook():
                 user_id = pending[invoice_id]["user_id"]
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, f"❌ **تم رفض الطلب**", parse_mode="Markdown")
-                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"❌ تم رفض الطلب", parse_mode="Markdown")
+                send_message(user_id, "❌ عذراً، لم يتم قبول طلب الاشتراك", parse_mode="Markdown")
             return "OK"
         
-        # القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
             edit_message(chat_id, msg_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
         
-        # تشغيل الصوت
         if cb_data.startswith("audio_"):
             parts = cb_data.split("_")
             prefix = parts[1]
             page_num = parts[2]
-            
             send_message(chat_id, "🎵 جاري تجهيز الصوت...")
-            
             pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
             if page_num in pages:
                 text = pages[page_num].get("content_original", "")
                 audio_path = text_to_audio(text, prefix, page_num)
-                
                 if audio_path and os.path.exists(audio_path):
                     with open(audio_path, 'rb') as audio:
                         requests.post(URL + "/sendVoice", files={"voice": audio}, data={"chat_id": chat_id})
@@ -440,21 +398,17 @@ def webhook():
                     send_message(chat_id, "❌ عذراً، حدث خطأ في إنشاء الصوت")
             return "OK"
         
-        # أزرار التنقل والترجمة والتمارين
         parts = cb_data.split("_")
         if len(parts) >= 3:
             book_type = "student" if parts[0] == "student" else "activity"
             action = parts[1]
             page_num = parts[2]
-            
             pages = STUDENT_PAGES if book_type == "student" else ACTIVITY_PAGES
             min_page = STUDENT_MIN if book_type == "student" else ACTIVITY_MIN
             max_page = STUDENT_MAX if book_type == "student" else ACTIVITY_MAX
-            
             if page_num in pages:
                 page = pages[page_num]
                 title = page.get("title", f"صفحة {page_num}")
-                
                 if action == "original" or action == "page":
                     content = format_text(page.get("content_original", ""))
                     mode = "original"
@@ -467,12 +421,10 @@ def webhook():
                 else:
                     content = format_text(page.get("content_original", ""))
                     mode = "original"
-                
                 edit_message(chat_id, msg_id, 
                     f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
                     get_page_buttons(book_type, page_num, mode, min_page, max_page),
                     "Markdown")
-        
         return "OK"
     
     # معالجة الرسائل النصية
@@ -482,12 +434,10 @@ def webhook():
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # بدء أو الرئيسية
         if text == '/start' or text == "🏠 الرئيسية":
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
         
-        # عرض قائمة الاشتراك
         elif text == "💳 اشتراك":
             keyboard = {
                 "inline_keyboard": [
@@ -495,43 +445,28 @@ def webhook():
                     [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
                 ]
             }
-            send_message(chat_id,
-                "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "اختر الباقة المناسبة لك:\n\n"
-                "🔹 بعد الاشتراك، ستحصل على:\n"
-                "✓ الوصول الكامل إلى جميع الكتب\n"
-                "✓ الترجمة الكاملة\n"
-                "✓ حلول التمارين النموذجية\n"
-                "✓ الوصول إلى جميع الاختبارات\n"
-                "✓ خاصية الصوت",
-                keyboard,
-                "Markdown")
+            send_message(chat_id, "💳 **نظام الاشتراك**\nاختر الباقة:", keyboard, "Markdown")
         
-        # كتاب الطالب
         elif text == "📖 كتاب الطالب":
-            send_message(chat_id, f"📖 أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
+            user_book_choice[user_id] = "student"
+            send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
         
-        # كتاب الأنشطة
         elif text == "✏️ كتاب الأنشطة":
-            send_message(chat_id, f"✏️ أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
+            user_book_choice[user_id] = "activity"
+            send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
         
-        # القواعد
         elif text == "📚 القواعد":
             send_message(chat_id, "📚 قائمة القواعد (قيد التطوير)")
         
-        # طلبات الاشتراك
         elif text == "📋 طلبات الاشتراك":
             show_pending_requests(chat_id, user_id)
         
-        # المشتركين
         elif text == "👥 المشتركين":
             show_active_subscriptions(chat_id, user_id)
         
-        # الدعم الفني
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
         
-        # معالجة رقم العملية
         elif text.replace(" ", "").isdigit() and len(text) >= 5:
             pending = load_pending()
             invoice_id = random.randint(100000, 999999)
@@ -544,16 +479,7 @@ def webhook():
                 "plan": "1_month"
             }
             save_pending(pending)
-            
-            send_message(chat_id, 
-                f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 الباقة: شهر واحد\n"
-                f"💰 المبلغ: 50 ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.",
-                parse_mode="Markdown")
-            
+            send_message(chat_id, f"✅ تم استلام طلبك! رقم العملية: `{text}`\nسيتم مراجعته قريباً.", parse_mode="Markdown")
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
@@ -561,35 +487,33 @@ def webhook():
                 ]
             }
             send_message(ADMIN_ID,
-                f"🔔 **طلب اشتراك جديد**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {msg['from'].get('first_name', '')}\n"
-                f"🆔 `{user_id}`\n"
-                f"📝 @{msg['from'].get('username', '')}\n"
-                f"📦 شهر واحد\n"
-                f"💰 50 ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"📌 رقم الطلب: `{invoice_id}`",
-                keyboard,
-                "Markdown")
+                f"🔔 طلب اشتراك جديد\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 50 ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}",
+                keyboard, "Markdown")
         
-        # إذا كان رقماً (صفحة)
         elif text.isdigit():
-            if text in STUDENT_PAGES:
-                page = STUDENT_PAGES[text]
-                content = format_text(page.get("content_original", ""))
-                send_message(chat_id, 
-                    f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                    get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX),
-                    "Markdown")
-            elif text in ACTIVITY_PAGES:
-                page = ACTIVITY_PAGES[text]
-                content = format_text(page.get("content_original", ""))
-                send_message(chat_id, 
-                    f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                    get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX),
-                    "Markdown")
+            selected_book = user_book_choice.get(user_id)
+            if selected_book == "student":
+                if text in STUDENT_PAGES:
+                    page = STUDENT_PAGES[text]
+                    content = format_text(page.get("content_original", ""))
+                    send_message(chat_id, 
+                        f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                        get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX),
+                        "Markdown")
+                else:
+                    send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الطالب")
+            elif selected_book == "activity":
+                if text in ACTIVITY_PAGES:
+                    page = ACTIVITY_PAGES[text]
+                    content = format_text(page.get("content_original", ""))
+                    send_message(chat_id, 
+                        f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
+                        get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX),
+                        "Markdown")
+                else:
+                    send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الأنشطة")
             else:
-                send_message(chat_id, f"❌ الصفحة {text} غير موجودة")
+                send_message(chat_id, "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)")
         
         else:
             keyboard = get_user_menu(user_id)
