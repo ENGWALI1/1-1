@@ -14,11 +14,17 @@ app = Flask(__name__)
 
 TOKEN = os.environ.get('BOT_TOKEN')
 if not TOKEN:
-    print("❌ BOT_TOKEN غير موجود في متغيرات البيئة")
+    print("❌ BOT_TOKEN غير موجود")
     exit(1)
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469
+SYRIATEL_NUMBERS = ["15570270"]
+PRICES = {"1_month": 50}
+
+# ==================== الحالات ====================
+WAITING_TRANSACTION_ID = 1
+WAITING_AMOUNT = 2
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -57,7 +63,7 @@ def load_subs():
 
 def save_subs(data):
     with open("subs.json", 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
 
 def load_pending():
     try:
@@ -68,7 +74,7 @@ def load_pending():
 
 def save_pending(data):
     with open("pending.json", 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
 
 def is_subscribed(user_id):
     subs = load_subs()
@@ -133,8 +139,8 @@ STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
 ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
-print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة ({STUDENT_MIN} إلى {STUDENT_MAX})")
-print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة ({ACTIVITY_MIN} إلى {ACTIVITY_MAX})")
+print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
+print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 
 # ==================== دوال العرض والصوت ====================
 def format_text(content):
@@ -230,7 +236,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
 
-# ==================== دوال المساعدة ====================
+# ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "text": text}
     if reply_markup:
@@ -260,10 +266,11 @@ def show_pending_requests(chat_id, user_id):
     
     text = "📋 **طلبات الاشتراك المعلقة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for inv_id, p in pending.items():
-        text += f"\n📌 رقم الطلب: `{inv_id}`\n"
+        text += f"\n📌 **رقم الطلب:** `{inv_id}`\n"
         text += f"👤 {p.get('first_name', p.get('username', 'بدون'))}\n"
         text += f"🆔 `{p['user_id']}`\n"
         text += f"💰 {p.get('amount', 50)} ل.س\n"
+        text += f"📞 {p.get('transaction_id', 'لم يرسل بعد')}\n"
         text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
@@ -280,7 +287,7 @@ def show_active_subscriptions(chat_id, user_id):
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for uid, expiry in subs.items():
         expiry_date = expiry[:10] if expiry else "غير محدد"
-        text += f"🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n\n"
+        text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
 def contact_teacher(chat_id):
@@ -298,12 +305,32 @@ def webhook():
     if not data:
         return "OK"
     
-    # معالجة الأزرار (callback_query)
+    # معالجة الأزرار
     if 'callback_query' in data:
         cb = data['callback_query']
         cb_data = cb['data']
         chat_id = cb['message']['chat']['id']
         msg_id = cb['message']['message_id']
+        
+        # اختيار الباقة
+        if cb_data.startswith("sub_"):
+            plan = cb_data.replace("sub_", "")
+            amount = PRICES.get(plan, 50)
+            
+            # تخزين حالة المستخدم
+            user_states[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction_id"}
+            
+            numbers_text = "\n".join(SYRIATEL_NUMBERS)
+            edit_message(chat_id, msg_id,
+                f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
+                f"💰 المبلغ: {amount} ل.س\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
+                f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
+                f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
+                f"مثال: `600044062208`",
+                parse_mode="Markdown")
+            return "OK"
         
         # قبول اشتراك
         if cb_data.startswith("approve_"):
@@ -317,8 +344,8 @@ def webhook():
                 save_subs(subs)
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, "✅ تم قبول الاشتراك وتفعيل المستخدم.")
-                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"✅ **تم تفعيل الاشتراك بنجاح!**\n👤 المستخدم: `{user_id}`", parse_mode="Markdown")
+                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.", parse_mode="Markdown")
             return "OK"
         
         # رفض اشتراك
@@ -329,8 +356,8 @@ def webhook():
                 user_id = pending[invoice_id]["user_id"]
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, "❌ تم رفض طلب الاشتراك.")
-                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\n\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"❌ **تم رفض الطلب**", parse_mode="Markdown")
+                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.", parse_mode="Markdown")
             return "OK"
         
         # القائمة الرئيسية
@@ -406,36 +433,23 @@ def webhook():
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
         
-        # اشتراك
+        # عرض قائمة الاشتراك (اختيار الباقة)
         elif text == "💳 اشتراك":
-            invoice_id = random.randint(100000, 999999)
-            pending = load_pending()
-            pending[str(invoice_id)] = {
-                "user_id": user_id,
-                "username": msg['from'].get('username', ''),
-                "first_name": msg['from'].get('first_name', ''),
-                "amount": 50
-            }
-            save_pending(pending)
-            
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
-                     {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]
+                    [{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}],
+                    [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
                 ]
             }
-            
-            send_message(chat_id, 
-                "✅ **تم استلام طلب اشتراكك!**\n\n"
-                "📞 أرسل المبلغ (50 ل.س) إلى سيريتل كاش: `15570270`\n\n"
-                "📌 بعد إتمام التحويل، سيتم تفعيل اشتراكك.",
-                parse_mode="Markdown")
-            
-            send_message(ADMIN_ID, 
-                f"🔔 **طلب اشتراك جديد**\n"
-                f"👤 {msg['from'].get('first_name', '')}\n"
-                f"🆔 `{user_id}`\n"
-                f"💰 50 ل.س",
+            send_message(chat_id,
+                "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "اختر الباقة المناسبة لك:\n\n"
+                "🔹 بعد الاشتراك، ستحصل على:\n"
+                "✓ الوصول الكامل إلى جميع الكتب (100% من المحتوى)\n"
+                "✓ الترجمة الكاملة لجميع الصفحات\n"
+                "✓ حلول التمارين النموذجية\n"
+                "✓ الوصول إلى جميع الاختبارات\n"
+                "✓ خاصية الصوت",
                 keyboard,
                 "Markdown")
         
@@ -463,6 +477,52 @@ def webhook():
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
         
+        # معالجة رقم العملية (المرحلة 2 من الاشتراك)
+        elif text.replace(" ", "").isdigit() and len(text) > 5:
+            # تخزين رقم العملية في طلب معلق
+            pending = load_pending()
+            invoice_id = random.randint(100000, 999999)
+            pending[str(invoice_id)] = {
+                "user_id": user_id,
+                "username": msg['from'].get('username', ''),
+                "first_name": msg['from'].get('first_name', ''),
+                "amount": 50,
+                "transaction_id": text,
+                "plan": "1_month"
+            }
+            save_pending(pending)
+            
+            # إشعار للمستخدم
+            send_message(chat_id, 
+                f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📦 الباقة: شهر واحد\n"
+                f"💰 المبلغ: 50 ل.س\n"
+                f"📌 رقم العملية: `{text}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.\n"
+                f"🙏 شكراً لانتظارك!",
+                parse_mode="Markdown")
+            
+            # إشعار للأدمن
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
+                     {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]
+                ]
+            }
+            send_message(ADMIN_ID,
+                f"🔔 **طلب اشتراك جديد**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 {msg['from'].get('first_name', '')}\n"
+                f"🆔 `{user_id}`\n"
+                f"📝 @{msg['from'].get('username', '')}\n"
+                f"📦 شهر واحد\n"
+                f"💰 50 ل.س\n"
+                f"📌 رقم العملية: `{text}`\n"
+                f"📌 رقم الطلب: `{invoice_id}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                keyboard,
+                "Markdown")
+        
         # إذا كان رقماً (صفحة)
         elif text.isdigit():
             if text in STUDENT_PAGES:
@@ -482,12 +542,15 @@ def webhook():
             else:
                 send_message(chat_id, f"❌ الصفحة {text} غير موجودة")
         
-        # أي شيء آخر
+        # أي شيء آخر (إذا كان المستخدم في حالة انتظار)
         else:
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "اختر من القائمة 👇", keyboard)
     
     return "OK"
+
+# ==================== تخزين حالة المستخدمين ====================
+user_states = {}
 
 # ==================== التشغيل ====================
 if __name__ == '__main__':
