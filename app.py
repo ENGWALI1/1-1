@@ -24,6 +24,8 @@ PRICES = {"1_month": 50}
 
 # تخزين اختيار المستخدم (student أو activity)
 user_book_choice = {}
+# تخزين حالة الاشتراك (مرحلة انتظار رقم العملية)
+user_plan_choice = {}
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -237,7 +239,6 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
     prefix = "student" if book_type == "student" else "activity"
     
-    # أزرار التنقل
     nav = []
     if int(page_num) > min_page:
         nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
@@ -246,7 +247,6 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     if nav:
         buttons.append(nav)
     
-    # أزرار الترجمة والصوت وحل التمارين
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
@@ -264,9 +264,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
         ])
     
-    # زر القائمة الرئيسية
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
-    
     return {"inline_keyboard": buttons}
 
 # ==================== دوال مساعدة ====================
@@ -352,10 +350,9 @@ def webhook():
         chat_id = cb['message']['chat']['id']
         msg_id = cb['message']['message_id']
         
-        # ✅ زر القائمة الرئيسية (أول شرط)
+        # ✅ زر القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
-            # حذف الرسالة القديمة وإرسال رسالة جديدة
             delete_message(chat_id, msg_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
@@ -365,11 +362,24 @@ def webhook():
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
             numbers_text = "\n".join(SYRIATEL_NUMBERS)
+            
+            # تخزين حالة المستخدم
+            user_plan_choice[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction"}
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
+                ]
+            }
             edit_message(chat_id, msg_id,
                 f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
                 f"💰 المبلغ: {amount} ل.س\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
-                f"🔄 الرجاء إرسال المبلغ ثم أرسل رقم العملية",
+                f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
+                f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
+                f"مثال: `600044062208`\n\n"
+                f"أو اضغط رجوع للإلغاء.",
+                keyboard,
                 parse_mode="Markdown")
             return "OK"
         
@@ -496,45 +506,57 @@ def webhook():
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
         
-        # معالجة رقم العملية (أكثر من 5 أرقام)
-        elif re.match(r'^\d{5,}$', text.replace(" ", "")):
-            pending = load_pending()
-            invoice_id = random.randint(100000, 999999)
-            pending[str(invoice_id)] = {
-                "user_id": user_id,
-                "username": msg['from'].get('username', ''),
-                "first_name": msg['from'].get('first_name', ''),
-                "amount": 50,
-                "transaction_id": text,
-                "plan": "1_month"
-            }
-            save_pending(pending)
-            send_message(chat_id, 
-                f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 الباقة: شهر واحد\n"
-                f"💰 المبلغ: 50 ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.",
-                parse_mode="Markdown")
-            
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
-                     {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]
-                ]
-            }
-            send_message(ADMIN_ID,
-                f"🔔 **طلب اشتراك جديد**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {msg['from'].get('first_name', '')}\n"
-                f"🆔 `{user_id}`\n"
-                f"📝 @{msg['from'].get('username', '')}\n"
-                f"📦 شهر واحد\n"
-                f"💰 50 ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"📌 رقم الطلب: `{invoice_id}`",
-                keyboard,
-                "Markdown")
+        # معالجة رقم العملية (إذا كان المستخدم في مرحلة الانتظار)
+        elif user_id in user_plan_choice and user_plan_choice[user_id].get("step") == "waiting_transaction":
+            transaction_id = text.strip()
+            if len(transaction_id) >= 5:
+                # قبول رقم العملية
+                pending = load_pending()
+                invoice_id = random.randint(100000, 999999)
+                plan_data = user_plan_choice[user_id]
+                pending[str(invoice_id)] = {
+                    "user_id": user_id,
+                    "username": msg['from'].get('username', ''),
+                    "first_name": msg['from'].get('first_name', ''),
+                    "amount": plan_data["amount"],
+                    "transaction_id": transaction_id,
+                    "plan": plan_data["plan"]
+                }
+                save_pending(pending)
+                
+                # حذف حالة المستخدم
+                del user_plan_choice[user_id]
+                
+                send_message(chat_id, 
+                    f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📦 الباقة: {plan_data['plan'].replace('_', ' ')}\n"
+                    f"💰 المبلغ: {plan_data['amount']} ل.س\n"
+                    f"📌 رقم العملية: `{transaction_id}`\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.\n"
+                    f"🙏 شكراً لانتظارك!",
+                    parse_mode="Markdown")
+                
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
+                         {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]
+                    ]
+                }
+                send_message(ADMIN_ID,
+                    f"🔔 **طلب اشتراك جديد**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 {msg['from'].get('first_name', '')}\n"
+                    f"🆔 `{user_id}`\n"
+                    f"📝 @{msg['from'].get('username', '')}\n"
+                    f"📦 {plan_data['plan'].replace('_', ' ')}\n"
+                    f"💰 {plan_data['amount']} ل.س\n"
+                    f"📌 رقم العملية: `{transaction_id}`\n"
+                    f"📌 رقم الطلب: `{invoice_id}`\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                    keyboard,
+                    "Markdown")
+            else:
+                send_message(chat_id, "❌ رقم العملية غير صحيح. الرجاء إدخال رقم صحيح (أكثر من 5 أرقام)")
         
         # إذا كان رقماً (صفحة من كتاب)
         elif text.isdigit():
