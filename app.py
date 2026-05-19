@@ -22,10 +22,6 @@ ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 
-# ==================== الحالات ====================
-WAITING_TRANSACTION_ID = 1
-WAITING_AMOUNT = 2
-
 # ==================== القوائم ====================
 unsubscribed_menu = {
     "keyboard": [
@@ -142,7 +138,7 @@ ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 
-# ==================== دوال العرض والصوت ====================
+# ==================== دوال العرض ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
@@ -163,37 +159,72 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
+    """دالة متطورة تقرأ جميع أنواع التمارين"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
     
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, ex in enumerate(exercises, 1):
-        # محاولة استخراج السؤال
-        question = ex.get('text', ex.get('question', ex.get('q', '')))
-        if not question:
-            # إذا كان المفتاح رقماً
-            for key in ex.keys():
-                if str(key).isdigit():
-                    question = ex[key]
-                    break
+        # إذا كان التمرين نصاً عادياً
+        if isinstance(ex, str):
+            result += f"**{i}. {ex[:200]}**\n\n"
         
-        # محاولة استخراج الجواب
-        answer = ex.get('answer', ex.get('a', ex.get('solution', ex.get('correct', '---'))))
+        # إذا كان التمرين قاموساً
+        elif isinstance(ex, dict):
+            # تحديد نوع التمرين
+            ex_type = ex.get('type', '')
+            
+            # تمرين محادثة (speaking)
+            if ex_type == 'speaking':
+                questions = ex.get('questions', [])
+                answers = ex.get('answers', [])
+                result += f"**🗣️ نشاط المحادثة {i}:**\n"
+                for j, q in enumerate(questions):
+                    result += f"**سؤال {j+1}:** {q}\n"
+                    if j < len(answers):
+                        result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
+                    result += "\n"
+            
+            # تمرين مطابقة (matching)
+            elif ex_type == 'matching':
+                result += f"**🔗 تمرين المزاوجة {i}:**\n"
+                result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
+            
+            # تمرين عادي
+            else:
+                # البحث عن السؤال
+                question = (ex.get('text') or ex.get('question') or ex.get('q') or 
+                           ex.get('sentence') or ex.get('prompt') or f'سؤال {i}')
+                
+                # البحث عن الجواب
+                answer = (ex.get('answer') or ex.get('a') or ex.get('solution') or 
+                         ex.get('correct') or ex.get('response') or '---')
+                
+                # إذا كان الجواب قائمة
+                if isinstance(answer, list):
+                    if len(answer) <= 5:
+                        answer = ', '.join(str(a) for a in answer)
+                    else:
+                        answer = '\n   • ' + '\n   • '.join(str(a) for a in answer[:10])
+                        answer = f"• {answer}"
+                
+                # إذا كان الجواب منطقياً (True/False)
+                if isinstance(answer, bool):
+                    answer = "صحيح" if answer else "خطأ"
+                
+                # تنظيف الجواب من الرموز الزائدة
+                if isinstance(answer, str):
+                    answer = answer.replace('*', '').replace('_', '')
+                
+                result += f"**{i}. {question}**\n✅ {answer}\n\n"
         
-        # إذا كان الجواب قائمة (مثل تمرين مطابقة)
-        if isinstance(answer, list):
-            answer = ', '.join(str(a) for a in answer)
+        # إذا كان التمرين قائمة
+        elif isinstance(ex, list):
+            result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
         
-        # إذا كان الجواب منطقياً (True/False)
-        if isinstance(answer, bool):
-            answer = "صحيح" if answer else "خطأ"
-        
-        # إضافة التمرين إلى النتيجة
-        if question:
-            result += f"**{i}. {question}**\n✅ {answer}\n\n"
+        # أي نوع آخر
         else:
-            # إذا لم نجد سؤالاً، نعرض التمرين كاملاً
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     
     return result
@@ -343,9 +374,6 @@ def webhook():
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
             
-            # تخزين حالة المستخدم
-            user_states[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction_id"}
-            
             numbers_text = "\n".join(SYRIATEL_NUMBERS)
             edit_message(chat_id, msg_id,
                 f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
@@ -459,7 +487,7 @@ def webhook():
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
         
-        # عرض قائمة الاشتراك (اختيار الباقة)
+        # عرض قائمة الاشتراك
         elif text == "💳 اشتراك":
             keyboard = {
                 "inline_keyboard": [
@@ -471,8 +499,8 @@ def webhook():
                 "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "اختر الباقة المناسبة لك:\n\n"
                 "🔹 بعد الاشتراك، ستحصل على:\n"
-                "✓ الوصول الكامل إلى جميع الكتب (100% من المحتوى)\n"
-                "✓ الترجمة الكاملة لجميع الصفحات\n"
+                "✓ الوصول الكامل إلى جميع الكتب\n"
+                "✓ الترجمة الكاملة\n"
                 "✓ حلول التمارين النموذجية\n"
                 "✓ الوصول إلى جميع الاختبارات\n"
                 "✓ خاصية الصوت",
@@ -491,11 +519,11 @@ def webhook():
         elif text == "📚 القواعد":
             send_message(chat_id, "📚 قائمة القواعد (قيد التطوير)")
         
-        # طلبات الاشتراك (للأدمن)
+        # طلبات الاشتراك
         elif text == "📋 طلبات الاشتراك":
             show_pending_requests(chat_id, user_id)
         
-        # المشتركين (للأدمن)
+        # المشتركين
         elif text == "👥 المشتركين":
             show_active_subscriptions(chat_id, user_id)
         
@@ -503,9 +531,8 @@ def webhook():
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
         
-        # معالجة رقم العملية (المرحلة 2 من الاشتراك)
-        elif text.replace(" ", "").isdigit() and len(text) > 5:
-            # تخزين رقم العملية في طلب معلق
+        # معالجة رقم العملية
+        elif text.replace(" ", "").isdigit() and len(text) >= 5:
             pending = load_pending()
             invoice_id = random.randint(100000, 999999)
             pending[str(invoice_id)] = {
@@ -518,18 +545,15 @@ def webhook():
             }
             save_pending(pending)
             
-            # إشعار للمستخدم
             send_message(chat_id, 
                 f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"📦 الباقة: شهر واحد\n"
                 f"💰 المبلغ: 50 ل.س\n"
                 f"📌 رقم العملية: `{text}`\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.\n"
-                f"🙏 شكراً لانتظارك!",
+                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.",
                 parse_mode="Markdown")
             
-            # إشعار للأدمن
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
@@ -544,8 +568,7 @@ def webhook():
                 f"📦 شهر واحد\n"
                 f"💰 50 ل.س\n"
                 f"📌 رقم العملية: `{text}`\n"
-                f"📌 رقم الطلب: `{invoice_id}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"📌 رقم الطلب: `{invoice_id}`",
                 keyboard,
                 "Markdown")
         
@@ -568,15 +591,11 @@ def webhook():
             else:
                 send_message(chat_id, f"❌ الصفحة {text} غير موجودة")
         
-        # أي شيء آخر (إذا كان المستخدم في حالة انتظار)
         else:
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "اختر من القائمة 👇", keyboard)
     
     return "OK"
-
-# ==================== تخزين حالة المستخدمين ====================
-user_states = {}
 
 # ==================== التشغيل ====================
 if __name__ == '__main__':
