@@ -25,12 +25,14 @@ PRICES = {"1_month": 50}
 # تخزين اختيار المستخدم
 user_book_choice = {}
 user_plan_choice = {}
+user_test_data = {}  # تخزين بيانات الاختبار للمستخدم
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
     "keyboard": [
         ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
-        ["📚 القواعد", "💳 اشتراك", "🛠️ الدعم الفني", "🏠 الرئيسية"]
+        ["📚 القواعد", "📝 تمارين", "💳 اشتراك"],
+        ["🛠️ الدعم الفني", "🏠 الرئيسية"]
     ],
     "resize_keyboard": True
 }
@@ -38,7 +40,8 @@ unsubscribed_menu = {
 subscribed_menu = {
     "keyboard": [
         ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
-        ["📚 القواعد", "🛠️ الدعم الفني", "🏠 الرئيسية"]
+        ["📚 القواعد", "📝 تمارين"],
+        ["🛠️ الدعم الفني", "🏠 الرئيسية"]
     ],
     "resize_keyboard": True
 }
@@ -46,7 +49,7 @@ subscribed_menu = {
 admin_menu = {
     "keyboard": [
         ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
-        ["📚 القواعد", "💳 اشتراك"],
+        ["📚 القواعد", "📝 تمارين", "💳 اشتراك"],
         ["📋 طلبات الاشتراك", "👥 المشتركين"],
         ["🛠️ الدعم الفني", "🏠 الرئيسية"]
     ],
@@ -127,37 +130,14 @@ def load_pages_from_zip(zip_path):
 
 # ==================== تحميل القواعد ====================
 def clean_text_for_telegram(text):
-    """تنظيف النص من الرموز التي لا تظهر في Telegram"""
     if not text:
         return text
-    
-    # إزالة المستطيلات والرموز الخاصة
-    text = text.replace('┌', '')
-    text = text.replace('┐', '')
-    text = text.replace('└', '')
-    text = text.replace('┘', '')
-    text = text.replace('├', '')
-    text = text.replace('┤', '')
-    text = text.replace('─', '')
-    text = text.replace('│', '')
-    text = text.replace('█', '')
-    text = text.replace('░', '')
-    text = text.replace('▒', '')
-    text = text.replace('▓', '')
-    text = text.replace('┃', '')
-    text = text.replace('━', '')
-    text = text.replace('┏', '')
-    text = text.replace('┓', '')
-    text = text.replace('┗', '')
-    text = text.replace('┛', '')
-    
-    # تنظيف العلامات الزائدة
-    text = text.replace('**', '')
-    text = text.replace('__', '')
-    
-    # إزالة المسافات الزائدة
+    text = text.replace('┌', '').replace('┐', '').replace('└', '').replace('┘', '')
+    text = text.replace('├', '').replace('┤', '').replace('─', '').replace('│', '')
+    text = text.replace('█', '').replace('░', '').replace('▒', '').replace('▓', '')
+    text = text.replace('┃', '').replace('━', '').replace('┏', '').replace('┓', '')
+    text = text.replace('┗', '').replace('┛', '').replace('**', '').replace('__', '')
     text = re.sub(r'\n{4,}', '\n\n', text)
-    
     return text.strip()
 
 def load_grammar_rules():
@@ -166,13 +146,11 @@ def load_grammar_rules():
     extract_dir = "lessons"
     
     if not os.path.exists(zip_path):
-        print(f"❌ {zip_path} غير موجود")
         return rules
     
     if not os.path.exists(extract_dir):
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-        print("✅ تم فك ضغط lessons.zip")
     
     for root, _, files in os.walk(extract_dir):
         for file in files:
@@ -181,15 +159,45 @@ def load_grammar_rules():
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         rule_name = file.replace(".txt", "")
-                        content = f.read()
-                        # تنظيف المحتوى
-                        content = clean_text_for_telegram(content)
-                        rules[rule_name] = content
-                        print(f"✅ تم تحميل قاعدة: {rule_name}")
-                except Exception as e:
-                    print(f"⚠️ خطأ في {file}: {e}")
-    
+                        rules[rule_name] = clean_text_for_telegram(f.read())
+                except:
+                    pass
     return rules
+
+# ==================== تحميل الاختبارات ====================
+def load_tests():
+    tests = {}
+    zip_path = "tests.zip"
+    extract_dir = "tests_temp"
+    
+    if not os.path.exists(zip_path):
+        return tests
+    
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+    
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.extractall(extract_dir)
+    
+    for root, _, files in os.walk(extract_dir):
+        for file in files:
+            if file.endswith(".json"):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        grammar_name = data.get("grammar_name")
+                        level = data.get("level", "intermediate_1")
+                        if grammar_name:
+                            tests[grammar_name] = {
+                                "data": data,
+                                "level": level
+                            }
+                except:
+                    pass
+    
+    shutil.rmtree(extract_dir)
+    return tests
 
 print("📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
@@ -200,6 +208,9 @@ ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
 print("📚 تحميل القواعد النحوية...")
 GRAMMAR_RULES = load_grammar_rules()
 
+print("📚 تحميل الاختبارات...")
+TESTS = load_tests()
+
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
 
@@ -208,9 +219,24 @@ STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
 ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
+# ترتيب الاختبارات حسب المستوى
+TESTS_BY_LEVEL = {
+    "beginner_1": [],
+    "beginner_2": [],
+    "intermediate_1": [],
+    "intermediate_2": [],
+    "advanced": []
+}
+
+for name, test in TESTS.items():
+    level = test["level"]
+    if level in TESTS_BY_LEVEL:
+        TESTS_BY_LEVEL[level].append(name)
+
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
+print(f"✅ الاختبارات: {len(TESTS)}")
 
 # ==================== دوال العرض ====================
 def format_text(content):
@@ -222,8 +248,6 @@ def format_text(content):
     content = content.replace("Speaking", "\n💬 **Speaking**\n")
     content = content.replace("Reading", "\n📖 **Reading**\n")
     content = content.replace("Writing", "\n✏️ **Writing**\n")
-    content = content.replace("Vocabulary", "\n📝 **Vocabulary**\n")
-    content = content.replace("Pronunciation", "\n🔊 **Pronunciation**\n")
     return content[:4000]
 
 def format_translation(lines):
@@ -237,56 +261,26 @@ def format_translation(lines):
 def format_exercises(exercises):
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
-    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    
     for i, ex in enumerate(exercises, 1):
-        if isinstance(ex, str):
-            result += f"**{i}. {ex[:200]}**\n\n"
-        elif isinstance(ex, dict):
-            ex_type = ex.get('type', '')
-            if ex_type == 'speaking':
-                questions = ex.get('questions', [])
-                answers = ex.get('answers', [])
-                result += f"**🗣️ نشاط المحادثة {i}:**\n"
-                for j, q in enumerate(questions):
-                    result += f"**سؤال {j+1}:** {q}\n"
-                    if j < len(answers):
-                        result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
-                    result += "\n"
-            elif ex_type == 'matching':
-                result += f"**🔗 تمرين المزاوجة {i}:**\n"
-                result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
-            else:
-                question = ex.get('text') or ex.get('question') or ex.get('q') or f'سؤال {i}'
-                answer = ex.get('answer') or ex.get('a') or ex.get('solution') or ex.get('correct') or '---'
-                if isinstance(answer, list):
-                    answer = ', '.join(str(a) for a in answer)
-                if isinstance(answer, bool):
-                    answer = "صحيح" if answer else "خطأ"
-                result += f"**{i}. {question}**\n✅ {answer}\n\n"
-        elif isinstance(ex, list):
-            result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
+        if isinstance(ex, dict):
+            question = ex.get('text') or ex.get('question') or f'سؤال {i}'
+            answer = ex.get('answer') or '---'
+            result += f"**{i}. {question}**\n✅ {answer}\n\n"
         else:
-            result += f"**{i}. {str(ex)[:200]}**\n\n"
-    
+            result += f"**{i}. {ex}**\n\n"
     return result
 
 def text_to_audio(text, book_type, page_num):
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
-    
     clean_text = re.sub(r'[^\x00-\x7F]+', ' ', text)
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-    
     if len(clean_text) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
-    
     audio_path = os.path.join(audio_dir, f"{book_type}_{page_num}.mp3")
-    
     if os.path.exists(audio_path):
         return audio_path
-    
     async def _gen():
         try:
             communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural")
@@ -294,7 +288,6 @@ def text_to_audio(text, book_type, page_num):
             return audio_path
         except:
             return None
-    
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -307,7 +300,6 @@ def text_to_audio(text, book_type, page_num):
 def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
     prefix = "student" if book_type == "student" else "activity"
-    
     nav = []
     if int(page_num) > min_page:
         nav.append({"text": "◀️ السابق", "callback_data": f"{prefix}_page_{int(page_num)-1}"})
@@ -315,7 +307,6 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
         nav.append({"text": "التالي ▶️", "callback_data": f"{prefix}_page_{int(page_num)+1}"})
     if nav:
         buttons.append(nav)
-    
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
@@ -332,17 +323,44 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
             {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
         ])
-    
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
 
 def get_grammar_buttons():
-    """توليد أزرار القواعد"""
     buttons = []
     for rule_name in GRAMMAR_RULES.keys():
         display_name = rule_name.replace("_", " ").title()
         buttons.append([{"text": f"📘 {display_name}", "callback_data": f"grammar_{rule_name}"}])
     buttons.append([{"text": "🔙 رجوع", "callback_data": "main_menu"}])
+    return {"inline_keyboard": buttons}
+
+def get_level_buttons():
+    level_names = {
+        "beginner_1": "🥉 مستوى مبتدئ 1",
+        "beginner_2": "🥈 مستوى مبتدئ 2",
+        "intermediate_1": "🥇 مستوى متوسط 1",
+        "intermediate_2": "🏆 مستوى متوسط 2",
+        "advanced": "⭐ مستوى متقدم"
+    }
+    buttons = []
+    for level_id, level_name in level_names.items():
+        if TESTS_BY_LEVEL.get(level_id):
+            buttons.append([{"text": level_name, "callback_data": f"level_{level_id}"}])
+    buttons.append([{"text": "🔙 رجوع", "callback_data": "main_menu"}])
+    return {"inline_keyboard": buttons}
+
+def get_test_buttons(level_id):
+    buttons = []
+    for test_name in TESTS_BY_LEVEL.get(level_id, []):
+        display_name = test_name.replace("_", " ").title()
+        buttons.append([{"text": f"📝 {display_name}", "callback_data": f"test_{test_name}"}])
+    buttons.append([{"text": "🔙 رجوع", "callback_data": "back_to_levels"}])
+    return {"inline_keyboard": buttons}
+
+def get_test_question_buttons(question_index, options, total):
+    buttons = []
+    for i, opt in enumerate(options):
+        buttons.append([{"text": f"{i+1}. {opt}", "callback_data": f"test_q_{question_index}_{i}"}])
     return {"inline_keyboard": buttons}
 
 # ==================== دوال مساعدة ====================
@@ -370,12 +388,10 @@ def show_pending_requests(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    
     pending = load_pending()
     if not pending:
         send_message(chat_id, "📭 لا توجد طلبات اشتراك معلقة.")
         return
-    
     text = "📋 **طلبات الاشتراك المعلقة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for inv_id, p in pending.items():
         text += f"\n📌 **رقم الطلب:** `{inv_id}`\n"
@@ -390,25 +406,78 @@ def show_active_subscriptions(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    
     subs = load_subs()
     if not subs:
         send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
         return
-    
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     for uid, expiry in subs.items():
         expiry_date = expiry[:10] if expiry else "غير محدد"
-        try:
-            days_left = (datetime.fromisoformat(expiry) - datetime.now()).days
-            text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n📆 متبقي: {days_left} يوم\n"
-        except:
-            text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
+        text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
 def contact_teacher(chat_id):
     keyboard = {"inline_keyboard": [[{"text": "🛠️ الدعم الفني", "url": "https://t.me/ENGWALI1"}]]}
     send_message(chat_id, "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:", keyboard)
+
+# ==================== دوال الاختبارات ====================
+def start_test(chat_id, user_id, test_name):
+    if test_name not in TESTS:
+        send_message(chat_id, "❌ الاختبار غير موجود")
+        return
+    test = TESTS[test_name]["data"]
+    questions = test.get("questions", [])
+    if not questions:
+        send_message(chat_id, "❌ لا توجد أسئلة في هذا الاختبار")
+        return
+    user_test_data[user_id] = {
+        "test_name": test_name,
+        "questions": questions,
+        "current": 0,
+        "score": 0,
+        "total": len(questions),
+        "chat_id": chat_id
+    }
+    send_question(chat_id, user_id)
+
+def send_question(chat_id, user_id):
+    data = user_test_data.get(user_id)
+    if not data:
+        return
+    idx = data["current"]
+    if idx >= data["total"]:
+        show_test_result(chat_id, user_id)
+        return
+    q = data["questions"][idx]
+    text = f"📝 **{data['test_name'].replace('_', ' ').title()}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n**السؤال {idx+1} من {data['total']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {q['text']}\n\n📌 اختر الإجابة الصحيحة:"
+    buttons = get_test_question_buttons(idx, q["options"], data["total"])
+    send_message(chat_id, text, buttons, "Markdown")
+
+def show_test_result(chat_id, user_id):
+    data = user_test_data.pop(user_id, None)
+    if not data:
+        return
+    percentage = (data["score"] / data["total"]) * 100
+    text = f"📊 **نتيجة الاختبار**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ {data['score']} من {data['total']}\n📈 النسبة: {percentage:.0f}%\n\n🔙 اضغط /start للعودة"
+    send_message(chat_id, text, parse_mode="Markdown")
+
+def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
+    data = user_test_data.get(user_id)
+    if not data:
+        return
+    if question_idx != data["current"]:
+        return
+    q = data["questions"][question_idx]
+    is_correct = (answer_idx + 1) == q["correct"]
+    if is_correct:
+        data["score"] += 1
+        result_text = f"✅ **صحيح!**\n{q.get('explanation', '')}"
+    else:
+        correct_opt = q["options"][q["correct"] - 1]
+        result_text = f"❌ **خطأ!**\n✅ الإجابة الصحيحة: {correct_opt}\n{q.get('explanation', '')}"
+    data["current"] += 1
+    send_message(chat_id, result_text, parse_mode="Markdown")
+    send_question(chat_id, user_id)
 
 # ==================== معالج Webhook ====================
 @app.route('/')
@@ -427,8 +496,9 @@ def webhook():
         cb_data = cb['data']
         chat_id = cb['message']['chat']['id']
         msg_id = cb['message']['message_id']
+        user_id = cb['from']['id']
         
-        # زر القائمة الرئيسية
+        # القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
             delete_message(chat_id, msg_id)
@@ -440,13 +510,7 @@ def webhook():
             rule_name = cb_data.replace("grammar_", "")
             if rule_name in GRAMMAR_RULES:
                 content = GRAMMAR_RULES[rule_name]
-                # إضافة زر رجوع
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "🔙 رجوع إلى القائمة", "callback_data": "back_to_grammar"}]
-                    ]
-                }
-                # تقسيم النص الطويل
+                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع إلى القائمة", "callback_data": "back_to_grammar"}]]}
                 if len(content) > 4000:
                     parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
                     send_message(chat_id, parts[0], keyboard)
@@ -464,29 +528,47 @@ def webhook():
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
+        # أزرار مستويات الاختبارات
+        if cb_data == "back_to_levels":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+            return "OK"
+        
+        if cb_data.startswith("level_"):
+            level_id = cb_data.replace("level_", "")
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
+            return "OK"
+        
+        if cb_data.startswith("test_"):
+            test_name = cb_data.replace("test_", "")
+            delete_message(chat_id, msg_id)
+            start_test(chat_id, user_id, test_name)
+            return "OK"
+        
+        # الإجابة على سؤال الاختبار
+        if cb_data.startswith("test_q_"):
+            parts = cb_data.split("_")
+            if len(parts) >= 4:
+                q_idx = int(parts[2])
+                a_idx = int(parts[3])
+                handle_test_answer(chat_id, user_id, q_idx, a_idx)
+            return "OK"
+        
         # اختيار الباقة
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
             numbers_text = "\n".join(SYRIATEL_NUMBERS)
-            
             user_plan_choice[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction"}
-            
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
-                ]
-            }
+            keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}
             edit_message(chat_id, msg_id,
                 f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
                 f"💰 المبلغ: {amount} ل.س\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
                 f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
                 f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
-                f"مثال: `600044062208`\n\n"
-                f"أو اضغط رجوع للإلغاء.",
-                keyboard,
-                parse_mode="Markdown")
+                f"مثال: `600044062208`", keyboard, "Markdown")
             return "OK"
         
         # قبول اشتراك
@@ -570,51 +652,40 @@ def webhook():
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # بدء أو الرئيسية
         if text == '/start' or text == "🏠 الرئيسية":
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
         
-        # عرض قائمة الاشتراك
         elif text == "💳 اشتراك":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}],
-                    [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
-                ]
-            }
-            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard)
+            keyboard = {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}
+            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard, "Markdown")
         
-        # كتاب الطالب
         elif text == "📖 كتاب الطالب":
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
         
-        # كتاب الأنشطة
         elif text == "✏️ كتاب الأنشطة":
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
         
-        # القواعد
         elif text == "📚 القواعد":
             if GRAMMAR_RULES:
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             else:
                 send_message(chat_id, "📚 لا توجد قواعد متوفرة حالياً.")
         
-        # طلبات الاشتراك (للأدمن)
+        elif text == "📝 تمارين":
+            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+        
         elif text == "📋 طلبات الاشتراك":
             show_pending_requests(chat_id, user_id)
         
-        # المشتركين (للأدمن)
         elif text == "👥 المشتركين":
             show_active_subscriptions(chat_id, user_id)
         
-        # الدعم الفني
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
         
-        # معالجة رقم العملية
         elif re.match(r'^\d{5,}$', text.replace(" ", "")):
             pending = load_pending()
             invoice_id = random.randint(100000, 999999)
@@ -630,57 +701,27 @@ def webhook():
             save_pending(pending)
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
-            
-            send_message(chat_id, 
-                f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 الباقة: شهر واحد\n"
-                f"💰 المبلغ: {plan_data['amount']} ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.")
-            
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
-                     {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]
-                ]
-            }
-            send_message(ADMIN_ID,
-                f"🔔 **طلب اشتراك جديد**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {msg['from'].get('first_name', '')}\n"
-                f"🆔 `{user_id}`\n"
-                f"📝 @{msg['from'].get('username', '')}\n"
-                f"📦 شهر واحد\n"
-                f"💰 {plan_data['amount']} ل.س\n"
-                f"📌 رقم العملية: `{text}`\n"
-                f"📌 رقم الطلب: `{invoice_id}`",
-                keyboard)
+            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
+            keyboard = {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}
+            send_message(ADMIN_ID, f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", keyboard, "Markdown")
         
-        # إذا كان رقماً (صفحة من كتاب)
         elif text.isdigit():
             selected_book = user_book_choice.get(user_id)
             if selected_book == "student":
                 if text in STUDENT_PAGES:
                     page = STUDENT_PAGES[text]
-                    content = format_text(page.get("content_original", ""))
-                    send_message(chat_id, 
-                        f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                        get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX))
+                    send_message(chat_id, f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الطالب")
             elif selected_book == "activity":
                 if text in ACTIVITY_PAGES:
                     page = ACTIVITY_PAGES[text]
-                    content = format_text(page.get("content_original", ""))
-                    send_message(chat_id, 
-                        f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                        get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX))
+                    send_message(chat_id, f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الأنشطة")
             else:
                 send_message(chat_id, "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)")
         
-        # أي شيء آخر
         else:
             keyboard = get_user_menu(user_id)
             send_message(chat_id, "اختر من القائمة 👇", keyboard)
@@ -693,6 +734,5 @@ if __name__ == '__main__':
         save_subs({})
     if not os.path.exists("pending.json"):
         save_pending({})
-    
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
