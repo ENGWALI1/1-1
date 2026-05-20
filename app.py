@@ -5,6 +5,7 @@ import shutil
 import re
 import asyncio
 import random
+import sqlite3
 import edge_tts
 from flask import Flask, request
 import requests
@@ -27,23 +28,133 @@ SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10  # عدد الطلبات المجانية
 
-# تخزين اختيار المستخدم
+# تخزين اختيار المستخدم (مؤقت، لا يحتاج حفظ)
 user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
 
-# ==================== ملفات الاستخدام ====================
-def load_user_usage():
-    try:
-        with open("user_usage.json", 'r') as f:
-            return json.load(f)
-    except:
-        return {}
+# ==================== قاعدة بيانات SQLite ====================
+DB_PATH = "bot_data.db"
 
-def save_user_usage(data):
-    with open("user_usage.json", 'w') as f:
-        json.dump(data, f, indent=2)
+def init_db():
+    """تهيئة قاعدة البيانات وجداولها"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    # جدول استخدام الطلبات المجانية
+    c.execute('''CREATE TABLE IF NOT EXISTS user_usage
+                 (user_id TEXT PRIMARY KEY, used INTEGER DEFAULT 0)''')
+    
+    # جدول المشتركين (نسخة احتياطية من subs.json)
+    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions
+                 (user_id TEXT PRIMARY KEY, expiry TEXT)''')
+    
+    # جدول طلبات الاشتراك المعلقة
+    c.execute('''CREATE TABLE IF NOT EXISTS pending_requests
+                 (invoice_id TEXT PRIMARY KEY, user_id TEXT, username TEXT, 
+                  first_name TEXT, amount INTEGER, transaction_id TEXT, plan TEXT)''')
+    
+    conn.commit()
+    conn.close()
+    print("✅ قاعدة البيانات initialized")
 
+# ==================== دوال الاستخدام (SQLite) ====================
+def get_user_usage(user_id):
+    """الحصول على عدد الطلبات المستخدمة"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT used FROM user_usage WHERE user_id = ?", (str(user_id),))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else 0
+
+def increment_user_usage(user_id):
+    """زيادة عدد الطلبات المستخدمة"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO user_usage (user_id, used) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET used = used + 1", (str(user_id),))
+    conn.commit()
+    conn.close()
+
+def reset_user_usage(user_id):
+    """إعادة تعيين الاستخدام بعد الاشتراك"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE user_usage SET used = 0 WHERE user_id = ?", (str(user_id),))
+    conn.commit()
+    conn.close()
+
+# ==================== دوال المشتركين (SQLite) ====================
+def load_subs():
+    """تحميل المشتركين من قاعدة البيانات"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, expiry FROM subscriptions")
+    rows = c.fetchall()
+    conn.close()
+    return {row[0]: row[1] for row in rows}
+
+def save_subs(subs):
+    """حفظ المشتركين في قاعدة البيانات"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM subscriptions")
+    for user_id, expiry in subs.items():
+        c.execute("INSERT INTO subscriptions (user_id, expiry) VALUES (?, ?)", (user_id, expiry))
+    conn.commit()
+    conn.close()
+
+def is_subscribed(user_id):
+    """التحقق من اشتراك المستخدم"""
+    subs = load_subs()
+    expiry = subs.get(str(user_id))
+    return expiry and datetime.now().isoformat() < expiry
+
+# ==================== دوال الطلبات المعلقة (SQLite) ====================
+def load_pending():
+    """تحميل الطلبات المعلقة من قاعدة البيانات"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT invoice_id, user_id, username, first_name, amount, transaction_id, plan FROM pending_requests")
+    rows = c.fetchall()
+    conn.close()
+    pending = {}
+    for row in rows:
+        pending[row[0]] = {
+            "user_id": row[1],
+            "username": row[2],
+            "first_name": row[3],
+            "amount": row[4],
+            "transaction_id": row[5],
+            "plan": row[6]
+        }
+    return pending
+
+def save_pending(pending):
+    """حفظ الطلبات المعلقة في قاعدة البيانات"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM pending_requests")
+    for invoice_id, p in pending.items():
+        c.execute("INSERT INTO pending_requests (invoice_id, user_id, username, first_name, amount, transaction_id, plan) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (invoice_id, p["user_id"], p.get("username", ""), p.get("first_name", ""), p["amount"], p.get("transaction_id", ""), p["plan"]))
+    conn.commit()
+    conn.close()
+
+def add_pending_request(invoice_id, data):
+    """إضافة طلب معلق جديد"""
+    pending = load_pending()
+    pending[invoice_id] = data
+    save_pending(pending)
+
+def remove_pending_request(invoice_id):
+    """حذف طلب معلق"""
+    pending = load_pending()
+    if invoice_id in pending:
+        del pending[invoice_id]
+        save_pending(pending)
+
+# ==================== دوال الاستخدام الرئيسية ====================
 def check_and_deduct_request(user_id):
     """التحقق من رصيد المستخدم وخصم طلب"""
     if user_id == ADMIN_ID:
@@ -51,24 +162,19 @@ def check_and_deduct_request(user_id):
     if is_subscribed(user_id):
         return True
     
-    usage = load_user_usage()
-    user_data = usage.get(str(user_id), {"used": 0})
-    
-    if user_data["used"] >= FREE_REQUESTS:
+    used = get_user_usage(user_id)
+    if used >= FREE_REQUESTS:
         return False
     
-    user_data["used"] = user_data.get("used", 0) + 1
-    usage[str(user_id)] = user_data
-    save_user_usage(usage)
+    increment_user_usage(user_id)
     return True
 
 def get_remaining_requests(user_id):
     """الحصول على عدد الطلبات المتبقية"""
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    usage = load_user_usage()
-    user_data = usage.get(str(user_id), {"used": 0})
-    remaining = FREE_REQUESTS - user_data["used"]
+    used = get_user_usage(user_id)
+    remaining = FREE_REQUESTS - used
     return max(0, remaining)
 
 def get_usage_message(user_id):
@@ -88,10 +194,7 @@ def get_usage_message(user_id):
 
 def reset_user_requests_on_subscription(user_id):
     """إعادة تعيين الاستخدام بعد الاشتراك"""
-    usage = load_user_usage()
-    if str(user_id) in usage:
-        usage[str(user_id)]["used"] = 0
-        save_user_usage(usage)
+    reset_user_usage(user_id)
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -121,34 +224,6 @@ admin_menu = {
     ],
     "resize_keyboard": True
 }
-
-# ==================== نظام الاشتراك ====================
-def load_subs():
-    try:
-        with open("subs.json", 'r') as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_subs(data):
-    with open("subs.json", 'w') as f:
-        json.dump(data, f, indent=2)
-
-def load_pending():
-    try:
-        with open("pending.json", 'r') as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_pending(data):
-    with open("pending.json", 'w') as f:
-        json.dump(data, f, indent=2)
-
-def is_subscribed(user_id):
-    subs = load_subs()
-    expiry = subs.get(str(user_id))
-    return expiry and datetime.now().isoformat() < expiry
 
 def get_user_menu(user_id):
     if user_id == ADMIN_ID:
@@ -276,6 +351,9 @@ GRAMMAR_RULES = load_grammar_rules()
 print("📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
+# تهيئة قاعدة البيانات
+init_db()
+
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
 
@@ -297,6 +375,7 @@ print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
+print("✅ قاعدة البيانات: جاهزة")
 
 # ==================== دوال العرض ====================
 def format_text(content):
@@ -584,9 +663,8 @@ def show_my_balance(chat_id, user_id):
         expiry_date = expiry[:10] if expiry else "غير محدد"
         text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي الاشتراك: {expiry_date}\n🎉 وصول غير محدود إلى جميع المحتويات"
     else:
-        usage = load_user_usage()
-        user_data = usage.get(str(user_id), {"used": 0})
-        remaining = FREE_REQUESTS - user_data["used"]
+        used = get_user_usage(user_id)
+        remaining = FREE_REQUESTS - used
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 بعد نفاذ الرصيد، اشترك بـ 50 ل.س فقط للحصول على:\n✓ وصول غير محدود\n✓ الترجمة الكاملة\n✓ حلول التمارين\n✓ جميع الاختبارات\n✓ خاصية الصوت\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
@@ -694,8 +772,7 @@ def webhook():
                 subs[str(user_id)] = expiry
                 save_subs(subs)
                 reset_user_requests_on_subscription(user_id)
-                del pending[invoice_id]
-                save_pending(pending)
+                remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, f"✅ تم تفعيل الاشتراك بنجاح!")
                 send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.")
             return "OK"
@@ -706,8 +783,7 @@ def webhook():
             pending = load_pending()
             if invoice_id in pending:
                 user_id = pending[invoice_id]["user_id"]
-                del pending[invoice_id]
-                save_pending(pending)
+                remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, f"❌ تم رفض الطلب")
                 send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.")
             return "OK"
@@ -831,9 +907,9 @@ def webhook():
         
         elif re.match(r'^\d{5,}$', text.replace(" ", "")):
             pending = load_pending()
-            invoice_id = random.randint(100000, 999999)
+            invoice_id = str(random.randint(100000, 999999))
             plan_data = user_plan_choice.get(user_id, {"plan": "1_month", "amount": 50})
-            pending[str(invoice_id)] = {
+            pending[invoice_id] = {
                 "user_id": user_id,
                 "username": msg['from'].get('username', ''),
                 "first_name": msg['from'].get('first_name', ''),
@@ -876,12 +952,11 @@ def webhook():
     return "OK"
 
 if __name__ == '__main__':
-    if not os.path.exists("subs.json"):
-        save_subs({})
-    if not os.path.exists("pending.json"):
-        save_pending({})
-    if not os.path.exists("user_usage.json"):
-        save_user_usage({})
+    # تهيئة قاعدة البيانات
+    init_db()
+    
+    # تحميل البيانات من SQLite إلى الذاكرة (للتأكد من التوافق)
+    # دوال load_subs, save_subs, load_pending, save_pending تستخدم SQLite مباشرة
     
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
