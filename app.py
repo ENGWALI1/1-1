@@ -33,6 +33,41 @@ user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
 
+# ==================== دوال مساعدة مع حماية المحتوى ====================
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+    data = {
+        "chat_id": chat_id, 
+        "text": text,
+        "protect_content": True
+    }
+    if reply_markup:
+        data["reply_markup"] = reply_markup
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    return requests.post(URL + "/sendMessage", json=data)
+
+def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
+    data = {
+        "chat_id": chat_id, 
+        "message_id": message_id, 
+        "text": text,
+        "protect_content": True
+    }
+    if reply_markup:
+        data["reply_markup"] = reply_markup
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    return requests.post(URL + "/editMessageText", json=data)
+
+def delete_message(chat_id, message_id):
+    return requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
+
+def send_voice(chat_id, voice_path):
+    with open(voice_path, 'rb') as audio:
+        files = {'voice': audio}
+        data = {"chat_id": chat_id, "protect_content": True}
+        return requests.post(URL + "/sendVoice", files=files, data=data)
+
 # ==================== قاعدة بيانات SQLite ====================
 DB_PATH = "bot_data.db"
 
@@ -269,7 +304,7 @@ def load_grammar_rules():
                     pass
     return rules
 
-# ==================== تحميل الاختبارات (مع المجلدات الفرعية) ====================
+# ==================== تحميل الاختبارات ====================
 TESTS_BY_LEVEL = {
     "beginner_1": [],
     "beginner_2": [],
@@ -294,7 +329,6 @@ def load_tests():
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     
-    # تنظيف المستويات
     for level in TESTS_BY_LEVEL:
         TESTS_BY_LEVEL[level] = []
     
@@ -350,7 +384,6 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
 
-# طباعة المستويات
 print("📊 المستويات:")
 for level, tests_list in TESTS_BY_LEVEL.items():
     print(f"   {level}: {len(tests_list)} اختبار")
@@ -579,26 +612,6 @@ def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
     else:
         send_question(chat_id, user_id)
 
-# ==================== دوال مساعدة ====================
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
-    data = {"chat_id": chat_id, "text": text}
-    if reply_markup:
-        data["reply_markup"] = reply_markup
-    if parse_mode:
-        data["parse_mode"] = parse_mode
-    requests.post(URL + "/sendMessage", json=data)
-
-def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
-    data = {"chat_id": chat_id, "message_id": message_id, "text": text}
-    if reply_markup:
-        data["reply_markup"] = reply_markup
-    if parse_mode:
-        data["parse_mode"] = parse_mode
-    requests.post(URL + "/editMessageText", json=data)
-
-def delete_message(chat_id, message_id):
-    requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
-
 # ==================== دوال الاشتراك ====================
 def show_pending_requests(chat_id, user_id):
     if user_id != ADMIN_ID:
@@ -668,7 +681,6 @@ def webhook():
         msg_id = cb['message']['message_id']
         user_id = cb['from']['id']
         
-        # الإجابة على سؤال الاختبار
         if cb_data.startswith("test_ans_"):
             parts = cb_data.split("_")
             if len(parts) >= 3:
@@ -677,34 +689,29 @@ def webhook():
                 handle_test_answer(chat_id, user_id, q_idx, a_idx)
             return "OK"
         
-        # اختيار اختبار معين
         if cb_data.startswith("test_"):
             test_name = cb_data.replace("test_", "")
             delete_message(chat_id, msg_id)
             start_test(chat_id, user_id, test_name)
             return "OK"
         
-        # اختيار مستوى
         if cb_data.startswith("level_"):
             level_id = cb_data.replace("level_", "")
             delete_message(chat_id, msg_id)
             send_message(chat_id, f"📝 **اختر الاختبار:**", get_test_buttons(level_id))
             return "OK"
         
-        # رجوع إلى المستويات
         if cb_data == "back_to_levels":
             delete_message(chat_id, msg_id)
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
             return "OK"
         
-        # القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
             delete_message(chat_id, msg_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
         
-        # أزرار القواعد
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             if rule_name in GRAMMAR_RULES:
@@ -721,13 +728,11 @@ def webhook():
                 send_message(chat_id, "❌ القاعدة غير موجودة")
             return "OK"
         
-        # رجوع إلى قائمة القواعد
         if cb_data == "back_to_grammar":
             delete_message(chat_id, msg_id)
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
-        # اختيار الباقة
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
@@ -743,7 +748,6 @@ def webhook():
                 f"مثال: `600044062208`", keyboard, "Markdown")
             return "OK"
         
-        # قبول اشتراك
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -759,7 +763,6 @@ def webhook():
                 send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.")
             return "OK"
         
-        # رفض اشتراك
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -770,7 +773,6 @@ def webhook():
                 send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.")
             return "OK"
         
-        # تشغيل الصوت
         if cb_data.startswith("audio_"):
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
@@ -785,13 +787,11 @@ def webhook():
                 text = pages[page_num].get("content_original", "")
                 audio_path = text_to_audio(text, prefix, page_num)
                 if audio_path and os.path.exists(audio_path):
-                    with open(audio_path, 'rb') as audio:
-                        requests.post(URL + "/sendVoice", files={"voice": audio}, data={"chat_id": chat_id})
+                    send_voice(chat_id, audio_path)
                 else:
                     send_message(chat_id, "❌ عذراً، حدث خطأ في إنشاء الصوت")
             return "OK"
         
-        # أزرار التنقل والترجمة والتمارين
         parts = cb_data.split("_")
         if len(parts) >= 3:
             if not check_and_deduct_request(user_id):
