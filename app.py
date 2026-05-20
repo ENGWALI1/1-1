@@ -25,7 +25,7 @@ PRICES = {"1_month": 50}
 # تخزين اختيار المستخدم
 user_book_choice = {}
 user_plan_choice = {}
-user_test_data = {}  # تخزين بيانات الاختبار للمستخدم
+user_test_data = {}
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -357,11 +357,101 @@ def get_test_buttons(level_id):
     buttons.append([{"text": "🔙 رجوع", "callback_data": "back_to_levels"}])
     return {"inline_keyboard": buttons}
 
-def get_test_question_buttons(question_index, options, total):
+# ==================== دوال الاختبارات ====================
+def start_test(chat_id, user_id, test_name):
+    if test_name not in TESTS:
+        send_message(chat_id, "❌ الاختبار غير موجود")
+        return
+    
+    test = TESTS[test_name]["data"]
+    questions = test.get("questions", [])
+    
+    if not questions:
+        send_message(chat_id, "❌ لا توجد أسئلة في هذا الاختبار")
+        return
+    
+    user_test_data[user_id] = {
+        "test_name": test_name,
+        "test_title": test.get("title", test_name.replace("_", " ").title()),
+        "questions": questions,
+        "current": 0,
+        "score": 0,
+        "total": len(questions)
+    }
+    
+    send_question(chat_id, user_id)
+
+def send_question(chat_id, user_id):
+    data = user_test_data.get(user_id)
+    if not data:
+        send_message(chat_id, "❌ انتهت الجلسة. ابدأ اختباراً جديداً من قائمة التمارين.")
+        return
+    
+    current = data["current"]
+    if current >= data["total"]:
+        show_test_result(chat_id, user_id)
+        return
+    
+    q = data["questions"][current]
+    
+    text = f"📝 **{data['test_title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n**السؤال {current + 1} من {data['total']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {q['text']}\n\n📌 اختر الإجابة الصحيحة:"
+    
     buttons = []
-    for i, opt in enumerate(options):
-        buttons.append([{"text": f"{i+1}. {opt}", "callback_data": f"test_q_{question_index}_{i}"}])
-    return {"inline_keyboard": buttons}
+    for i, opt in enumerate(q["options"]):
+        buttons.append([{"text": f"{i+1}. {opt}", "callback_data": f"test_ans_{current}_{i}"}])
+    
+    keyboard = {"inline_keyboard": buttons}
+    send_message(chat_id, text, keyboard, "Markdown")
+
+def show_test_result(chat_id, user_id):
+    data = user_test_data.pop(user_id, None)
+    if not data:
+        return
+    
+    percentage = (data["score"] / data["total"]) * 100
+    
+    if percentage >= 90:
+        rating = "⭐ ممتاز!"
+    elif percentage >= 75:
+        rating = "👍 جيد جداً"
+    elif percentage >= 60:
+        rating = "📘 جيد"
+    elif percentage >= 40:
+        rating = "📖 يحتاج إلى مراجعة"
+    else:
+        rating = "📚 حاول مرة أخرى"
+    
+    text = f"📊 **نتيجة الاختبار**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📝 {data['test_title']}\n✅ {data['score']} من {data['total']}\n📈 النسبة: {percentage:.0f}%\n⭐ {rating}\n\n🔙 اضغط /start للعودة إلى القائمة الرئيسية"
+    
+    keyboard = {"keyboard": [["🏠 الرئيسية"]], "resize_keyboard": True}
+    send_message(chat_id, text, keyboard, "Markdown")
+
+def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
+    data = user_test_data.get(user_id)
+    if not data:
+        send_message(chat_id, "❌ انتهت الجلسة. ابدأ اختباراً جديداً من قائمة التمارين.")
+        return
+    
+    if question_idx != data["current"]:
+        return
+    
+    q = data["questions"][question_idx]
+    is_correct = (answer_idx + 1) == q["correct"]
+    
+    if is_correct:
+        data["score"] += 1
+        result_text = f"✅ **صحيح!**\n{q.get('explanation', 'إجابة صحيحة')}"
+    else:
+        correct_opt = q["options"][q["correct"] - 1]
+        result_text = f"❌ **خطأ!**\n✅ الإجابة الصحيحة: {correct_opt}\n{q.get('explanation', '')}"
+    
+    data["current"] += 1
+    send_message(chat_id, result_text, parse_mode="Markdown")
+    
+    if data["current"] >= data["total"]:
+        show_test_result(chat_id, user_id)
+    else:
+        send_question(chat_id, user_id)
 
 # ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
@@ -420,48 +510,17 @@ def contact_teacher(chat_id):
     keyboard = {"inline_keyboard": [[{"text": "🛠️ الدعم الفني", "url": "https://t.me/ENGWALI1"}]]}
     send_message(chat_id, "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:", keyboard)
 
-# ==================== دوال الاختبارات ====================
-# معالجة الأزرار
-if 'callback_query' in data:
-    cb = data['callback_query']
-    cb_data = cb['data']
-    chat_id = cb['message']['chat']['id']
-    msg_id = cb['message']['message_id']
-    user_id = cb['from']['id']
-    
-    # ✅ 1. الإجابة على سؤال الاختبار (الأولوية القصوى)
-    if cb_data.startswith("test_ans_"):
-        parts = cb_data.split("_")
-        if len(parts) >= 3:
-            q_idx = int(parts[2])
-            a_idx = int(parts[3])
-            handle_test_answer(chat_id, user_id, q_idx, a_idx)
+# ==================== معالج Webhook ====================
+@app.route('/')
+def home():
+    return "🤖 Bot is running!"
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    if not data:
         return "OK"
     
-    # ✅ 2. اختيار اختبار معين
-    if cb_data.startswith("test_"):
-        test_name = cb_data.replace("test_", "")
-        delete_message(chat_id, msg_id)
-        start_test(chat_id, user_id, test_name)
-        return "OK"
-    
-    # ✅ 3. اختيار مستوى
-    if cb_data.startswith("level_"):
-        level_id = cb_data.replace("level_", "")
-        delete_message(chat_id, msg_id)
-        send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
-        return "OK"
-    
-    # ✅ 4. رجوع إلى المستويات
-    if cb_data == "back_to_levels":
-        delete_message(chat_id, msg_id)
-        send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
-        return "OK"
-    
-    # ✅ 5. باقي المعالجات (القواعد، الاشتراك، الصوت، التنقل...)
-    # ... (باقي الكود)
-    
-    # معالجة الأزرار
     if 'callback_query' in data:
         cb = data['callback_query']
         cb_data = cb['data']
@@ -469,14 +528,43 @@ if 'callback_query' in data:
         msg_id = cb['message']['message_id']
         user_id = cb['from']['id']
         
-        # القائمة الرئيسية
+        # 1. الإجابة على سؤال الاختبار
+        if cb_data.startswith("test_ans_"):
+            parts = cb_data.split("_")
+            if len(parts) >= 3:
+                q_idx = int(parts[2])
+                a_idx = int(parts[3])
+                handle_test_answer(chat_id, user_id, q_idx, a_idx)
+            return "OK"
+        
+        # 2. اختيار اختبار معين
+        if cb_data.startswith("test_"):
+            test_name = cb_data.replace("test_", "")
+            delete_message(chat_id, msg_id)
+            start_test(chat_id, user_id, test_name)
+            return "OK"
+        
+        # 3. اختيار مستوى
+        if cb_data.startswith("level_"):
+            level_id = cb_data.replace("level_", "")
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
+            return "OK"
+        
+        # 4. رجوع إلى المستويات
+        if cb_data == "back_to_levels":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+            return "OK"
+        
+        # 5. القائمة الرئيسية
         if cb_data == "main_menu":
             keyboard = get_user_menu(chat_id)
             delete_message(chat_id, msg_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
             return "OK"
         
-        # أزرار القواعد
+        # 6. أزرار القواعد
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             if rule_name in GRAMMAR_RULES:
@@ -493,40 +581,13 @@ if 'callback_query' in data:
                 send_message(chat_id, "❌ القاعدة غير موجودة")
             return "OK"
         
-        # رجوع إلى قائمة القواعد
+        # 7. رجوع إلى قائمة القواعد
         if cb_data == "back_to_grammar":
             delete_message(chat_id, msg_id)
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
-        # أزرار مستويات الاختبارات
-        if cb_data == "back_to_levels":
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
-            return "OK"
-        
-        if cb_data.startswith("level_"):
-            level_id = cb_data.replace("level_", "")
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
-            return "OK"
-        
-        if cb_data.startswith("test_"):
-            test_name = cb_data.replace("test_", "")
-            delete_message(chat_id, msg_id)
-            start_test(chat_id, user_id, test_name)
-            return "OK"
-        
-        # الإجابة على سؤال الاختبار
-        if cb_data.startswith("test_q_"):
-            parts = cb_data.split("_")
-            if len(parts) >= 4:
-                q_idx = int(parts[2])
-                a_idx = int(parts[3])
-                handle_test_answer(chat_id, user_id, q_idx, a_idx)
-            return "OK"
-        
-        # اختيار الباقة
+        # 8. اختيار الباقة
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
@@ -542,7 +603,7 @@ if 'callback_query' in data:
                 f"مثال: `600044062208`", keyboard, "Markdown")
             return "OK"
         
-        # قبول اشتراك
+        # 9. قبول اشتراك
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -558,7 +619,7 @@ if 'callback_query' in data:
                 send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.")
             return "OK"
         
-        # رفض اشتراك
+        # 10. رفض اشتراك
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
             pending = load_pending()
@@ -570,7 +631,7 @@ if 'callback_query' in data:
                 send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.")
             return "OK"
         
-        # تشغيل الصوت
+        # 11. تشغيل الصوت
         if cb_data.startswith("audio_"):
             parts = cb_data.split("_")
             prefix = parts[1]
@@ -587,7 +648,7 @@ if 'callback_query' in data:
                     send_message(chat_id, "❌ عذراً، حدث خطأ في إنشاء الصوت")
             return "OK"
         
-        # أزرار التنقل والترجمة والتمارين
+        # 12. أزرار التنقل والترجمة والتمارين
         parts = cb_data.split("_")
         if len(parts) >= 3:
             book_type = "student" if parts[0] == "student" else "activity"
@@ -616,7 +677,6 @@ if 'callback_query' in data:
                     get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
-    # معالجة الرسائل النصية
     if 'message' in data:
         msg = data['message']
         chat_id = msg['chat']['id']
@@ -699,7 +759,6 @@ if 'callback_query' in data:
     
     return "OK"
 
-# ==================== التشغيل ====================
 if __name__ == '__main__':
     if not os.path.exists("subs.json"):
         save_subs({})
