@@ -425,14 +425,21 @@ def send_question(chat_id, user_id):
     
     q = data["questions"][current]
     
-    text = f"📝 **{data['test_title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n**السؤال {current + 1} من {data['total']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {q['text']}\n\n📌 اختر الإجابة الصحيحة:"
+    # تنظيف النص من الأحرف الخاصة
+    question_text = q['text'].replace('*', '').replace('_', '').replace('`', '')
+    
+    text = f"📝 *{data['test_title']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n*السؤال {current + 1} من {data['total']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {question_text}\n\n📌 اختر الإجابة الصحيحة:"
     
     buttons = []
     for i, opt in enumerate(q["options"]):
-        buttons.append([{"text": f"{i+1}. {opt}", "callback_data": f"test_ans_{current}_{i}"}])
+        # تنظيف الخيارات أيضاً
+        opt_text = str(opt).replace('*', '').replace('_', '').replace('`', '')
+        buttons.append([{"text": f"{i+1}. {opt_text}", "callback_data": f"test_ans_{current}_{i}"}])
     
     keyboard = {"inline_keyboard": buttons}
-    send_message(chat_id, text, keyboard, "Markdown")
+    
+    # استخدام send_message مع parse_mode=None للتأكد من وصول الرسالة
+    send_message(chat_id, text, keyboard, None)
     logging.info(f"📤 تم إرسال السؤال {current + 1} من {data['total']}")
 
 def show_test_result(chat_id, user_id):
@@ -492,7 +499,10 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
         data["reply_markup"] = reply_markup
     if parse_mode:
         data["parse_mode"] = parse_mode
-    requests.post(URL + "/sendMessage", json=data)
+    
+    response = requests.post(URL + "/sendMessage", json=data)
+    logging.info(f"📤 إرسال رسالة: {response.status_code} - {response.text[:100]}")
+    return response
 
 def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "message_id": message_id, "text": text}
