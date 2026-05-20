@@ -9,6 +9,10 @@ import edge_tts
 from flask import Flask, request
 import requests
 from datetime import datetime, timedelta
+import logging
+
+# إعداد نظام التسجيل
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 
@@ -164,22 +168,34 @@ def load_grammar_rules():
                     pass
     return rules
 
-# ==================== تحميل الاختبارات ====================
+# ==================== تحميل الاختبارات (يدعم المجلدات الفرعية) ====================
 def load_tests():
     tests = {}
     zip_path = "tests.zip"
     extract_dir = "tests_temp"
     
     if not os.path.exists(zip_path):
+        print("❌ tests.zip غير موجود")
         return tests
     
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
     
+    print("📦 فك ضغط tests.zip...")
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     
-    for root, _, files in os.walk(extract_dir):
+    # طباعة هيكل المجلدات
+    print("📂 هيكل المجلدات بعد فك الضغط:")
+    for root, dirs, files in os.walk(extract_dir):
+        level = os.path.basename(root)
+        indent = "  " * (root.count(os.sep) - extract_dir.count(os.sep))
+        print(f"{indent}📁 {level}/")
+        for file in files:
+            print(f"{indent}  📄 {file}")
+    
+    # البحث في جميع المجلدات الفرعية عن ملفات JSON
+    for root, dirs, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".json"):
                 file_path = os.path.join(root, file)
@@ -187,14 +203,20 @@ def load_tests():
                     with open(file_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         grammar_name = data.get("grammar_name")
-                        level = data.get("level", "intermediate_1")
+                        
+                        # استخراج المستوى من اسم المجلد
+                        level = os.path.basename(root)
+                        if level not in ["beginner_1", "beginner_2", "intermediate_1", "intermediate_2", "advanced"]:
+                            level = "intermediate_1"
+                        
                         if grammar_name:
                             tests[grammar_name] = {
                                 "data": data,
                                 "level": level
                             }
-                except:
-                    pass
+                            print(f"✅ تم تحميل اختبار: {grammar_name} (المستوى: {level})")
+                except Exception as e:
+                    print(f"⚠️ خطأ في {file}: {e}")
     
     shutil.rmtree(extract_dir)
     return tests
@@ -232,6 +254,7 @@ for name, test in TESTS.items():
     level = test["level"]
     if level in TESTS_BY_LEVEL:
         TESTS_BY_LEVEL[level].append(name)
+        print(f"📌 {name} -> {level}")
 
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
@@ -351,14 +374,21 @@ def get_level_buttons():
 
 def get_test_buttons(level_id):
     buttons = []
+    if level_id not in TESTS_BY_LEVEL:
+        return {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_levels"}]]}
+    
     for test_name in TESTS_BY_LEVEL.get(level_id, []):
-        display_name = test_name.replace("_", " ").title()
-        buttons.append([{"text": f"📝 {display_name}", "callback_data": f"test_{test_name}"}])
+        if test_name in TESTS:
+            display_name = test_name.replace("_", " ").title()
+            buttons.append([{"text": f"📝 {display_name}", "callback_data": f"test_{test_name}"}])
+    
     buttons.append([{"text": "🔙 رجوع", "callback_data": "back_to_levels"}])
     return {"inline_keyboard": buttons}
 
 # ==================== دوال الاختبارات ====================
 def start_test(chat_id, user_id, test_name):
+    logging.info(f"🚀 بدء اختبار: {test_name} للمستخدم {user_id}")
+    
     if test_name not in TESTS:
         send_message(chat_id, "❌ الاختبار غير موجود")
         return
@@ -379,6 +409,7 @@ def start_test(chat_id, user_id, test_name):
         "total": len(questions)
     }
     
+    logging.info(f"📊 عدد الأسئلة: {len(questions)}")
     send_question(chat_id, user_id)
 
 def send_question(chat_id, user_id):
@@ -402,6 +433,7 @@ def send_question(chat_id, user_id):
     
     keyboard = {"inline_keyboard": buttons}
     send_message(chat_id, text, keyboard, "Markdown")
+    logging.info(f"📤 تم إرسال السؤال {current + 1} من {data['total']}")
 
 def show_test_result(chat_id, user_id):
     data = user_test_data.pop(user_id, None)
@@ -528,18 +560,22 @@ def webhook():
         msg_id = cb['message']['message_id']
         user_id = cb['from']['id']
         
+        logging.info(f"📩 Callback data: {cb_data}")
+        
         # 1. الإجابة على سؤال الاختبار
         if cb_data.startswith("test_ans_"):
             parts = cb_data.split("_")
             if len(parts) >= 3:
                 q_idx = int(parts[2])
                 a_idx = int(parts[3])
+                logging.info(f"📝 إجابة على السؤال {q_idx}: الخيار {a_idx}")
                 handle_test_answer(chat_id, user_id, q_idx, a_idx)
             return "OK"
         
         # 2. اختيار اختبار معين
         if cb_data.startswith("test_"):
             test_name = cb_data.replace("test_", "")
+            logging.info(f"📚 بدء الاختبار: {test_name}")
             delete_message(chat_id, msg_id)
             start_test(chat_id, user_id, test_name)
             return "OK"
@@ -547,12 +583,14 @@ def webhook():
         # 3. اختيار مستوى
         if cb_data.startswith("level_"):
             level_id = cb_data.replace("level_", "")
+            logging.info(f"🎯 اختيار المستوى: {level_id}")
             delete_message(chat_id, msg_id)
             send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
             return "OK"
         
         # 4. رجوع إلى المستويات
         if cb_data == "back_to_levels":
+            logging.info(f"🔙 رجوع إلى المستويات")
             delete_message(chat_id, msg_id)
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
             return "OK"
@@ -682,6 +720,8 @@ def webhook():
         chat_id = msg['chat']['id']
         text = msg.get('text', '')
         user_id = msg['from']['id']
+        
+        logging.info(f"📨 رسالة من {user_id}: {text}")
         
         if text == '/start' or text == "🏠 الرئيسية":
             keyboard = get_user_menu(user_id)
