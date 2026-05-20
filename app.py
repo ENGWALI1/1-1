@@ -131,15 +131,33 @@ def load_grammar_rules():
     zip_path = "lessons.zip"
     extract_dir = "lessons"
     
+    # تشخيص: هل الملف موجود؟
     if not os.path.exists(zip_path):
-        print("❌ lessons.zip غير موجود")
+        print(f"❌ {zip_path} غير موجود في المسار: {os.getcwd()}")
+        print(f"📂 الملفات الموجودة: {os.listdir('.')}")
         return rules
     
+    print(f"✅ تم العثور على {zip_path}")
+    
+    # تشخيص: فك الضغط
     if not os.path.exists(extract_dir):
+        print(f"📦 جاري فك ضغط {zip_path}...")
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-        print("✅ تم فك ضغط lessons.zip")
+        print(f"✅ تم فك الضغط إلى {extract_dir}")
+    else:
+        print(f"✅ المجلد {extract_dir} موجود مسبقاً")
     
+    # تشخيص: ما هي الملفات الموجودة؟
+    if os.path.exists(extract_dir):
+        print(f"📂 محتويات مجلد {extract_dir}: {os.listdir(extract_dir)}")
+        for root, dirs, files in os.walk(extract_dir):
+            print(f"📁 في {root}: {files}")
+    else:
+        print(f"❌ مجلد {extract_dir} غير موجود بعد فك الضغط!")
+        return rules
+    
+    # قراءة الملفات
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
@@ -152,6 +170,7 @@ def load_grammar_rules():
                 except Exception as e:
                     print(f"⚠️ خطأ في {file}: {e}")
     
+    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
 
 print("📚 تحميل كتاب الطالب...")
