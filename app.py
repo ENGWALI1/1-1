@@ -26,9 +26,9 @@ URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
-FREE_REQUESTS = 10  # عدد الطلبات المجانية
+FREE_REQUESTS = 10
 
-# تخزين اختيار المستخدم (مؤقت، لا يحتاج حفظ)
+# تخزين مؤقت
 user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
@@ -37,30 +37,20 @@ user_test_data = {}
 DB_PATH = "bot_data.db"
 
 def init_db():
-    """تهيئة قاعدة البيانات وجداولها"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
-    # جدول استخدام الطلبات المجانية
     c.execute('''CREATE TABLE IF NOT EXISTS user_usage
                  (user_id TEXT PRIMARY KEY, used INTEGER DEFAULT 0)''')
-    
-    # جدول المشتركين (نسخة احتياطية من subs.json)
     c.execute('''CREATE TABLE IF NOT EXISTS subscriptions
                  (user_id TEXT PRIMARY KEY, expiry TEXT)''')
-    
-    # جدول طلبات الاشتراك المعلقة
     c.execute('''CREATE TABLE IF NOT EXISTS pending_requests
                  (invoice_id TEXT PRIMARY KEY, user_id TEXT, username TEXT, 
                   first_name TEXT, amount INTEGER, transaction_id TEXT, plan TEXT)''')
-    
     conn.commit()
     conn.close()
-    print("✅ قاعدة البيانات initialized")
+    print("✅ قاعدة البيانات جاهزة")
 
-# ==================== دوال الاستخدام (SQLite) ====================
 def get_user_usage(user_id):
-    """الحصول على عدد الطلبات المستخدمة"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT used FROM user_usage WHERE user_id = ?", (str(user_id),))
@@ -69,7 +59,6 @@ def get_user_usage(user_id):
     return result[0] if result else 0
 
 def increment_user_usage(user_id):
-    """زيادة عدد الطلبات المستخدمة"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("INSERT INTO user_usage (user_id, used) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET used = used + 1", (str(user_id),))
@@ -77,16 +66,13 @@ def increment_user_usage(user_id):
     conn.close()
 
 def reset_user_usage(user_id):
-    """إعادة تعيين الاستخدام بعد الاشتراك"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE user_usage SET used = 0 WHERE user_id = ?", (str(user_id),))
     conn.commit()
     conn.close()
 
-# ==================== دوال المشتركين (SQLite) ====================
 def load_subs():
-    """تحميل المشتركين من قاعدة البيانات"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT user_id, expiry FROM subscriptions")
@@ -95,7 +81,6 @@ def load_subs():
     return {row[0]: row[1] for row in rows}
 
 def save_subs(subs):
-    """حفظ المشتركين في قاعدة البيانات"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("DELETE FROM subscriptions")
@@ -105,14 +90,11 @@ def save_subs(subs):
     conn.close()
 
 def is_subscribed(user_id):
-    """التحقق من اشتراك المستخدم"""
     subs = load_subs()
     expiry = subs.get(str(user_id))
     return expiry and datetime.now().isoformat() < expiry
 
-# ==================== دوال الطلبات المعلقة (SQLite) ====================
 def load_pending():
-    """تحميل الطلبات المعلقة من قاعدة البيانات"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT invoice_id, user_id, username, first_name, amount, transaction_id, plan FROM pending_requests")
@@ -131,7 +113,6 @@ def load_pending():
     return pending
 
 def save_pending(pending):
-    """حفظ الطلبات المعلقة في قاعدة البيانات"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("DELETE FROM pending_requests")
@@ -141,36 +122,23 @@ def save_pending(pending):
     conn.commit()
     conn.close()
 
-def add_pending_request(invoice_id, data):
-    """إضافة طلب معلق جديد"""
-    pending = load_pending()
-    pending[invoice_id] = data
-    save_pending(pending)
-
 def remove_pending_request(invoice_id):
-    """حذف طلب معلق"""
     pending = load_pending()
     if invoice_id in pending:
         del pending[invoice_id]
         save_pending(pending)
 
-# ==================== دوال الاستخدام الرئيسية ====================
+# ==================== دوال الاستخدام ====================
 def check_and_deduct_request(user_id):
-    """التحقق من رصيد المستخدم وخصم طلب"""
-    if user_id == ADMIN_ID:
+    if user_id == ADMIN_ID or is_subscribed(user_id):
         return True
-    if is_subscribed(user_id):
-        return True
-    
     used = get_user_usage(user_id)
     if used >= FREE_REQUESTS:
         return False
-    
     increment_user_usage(user_id)
     return True
 
 def get_remaining_requests(user_id):
-    """الحصول على عدد الطلبات المتبقية"""
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
     used = get_user_usage(user_id)
@@ -178,7 +146,6 @@ def get_remaining_requests(user_id):
     return max(0, remaining)
 
 def get_usage_message(user_id):
-    """رسالة حالة الاستخدام"""
     if user_id == ADMIN_ID:
         return "👑 أنت المسؤول، لديك وصول غير محدود"
     if is_subscribed(user_id):
@@ -186,14 +153,12 @@ def get_usage_message(user_id):
         expiry = subs.get(str(user_id), "")
         expiry_date = expiry[:10] if expiry else "غير محدد"
         return f"✅ **مشترك نشط**\n📅 ينتهي: {expiry_date}\n🎉 وصول غير محدود"
-    
     remaining = get_remaining_requests(user_id)
     if remaining == 0:
         return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك بـ 50 ل.س فقط للوصول غير المحدود"
     return f"📊 **الطلبات المجانية المتبقية:** {remaining} من {FREE_REQUESTS}"
 
 def reset_user_requests_on_subscription(user_id):
-    """إعادة تعيين الاستخدام بعد الاشتراك"""
     reset_user_usage(user_id)
 
 # ==================== القوائم ====================
@@ -233,7 +198,7 @@ def get_user_menu(user_id):
     else:
         return unsubscribed_menu
 
-# ==================== فك ضغط وتحميل البيانات ====================
+# ==================== تحميل البيانات ====================
 def load_pages_from_zip(zip_path):
     pages = {}
     extract_dir = zip_path.replace(".zip", "")
@@ -269,7 +234,6 @@ def load_pages_from_zip(zip_path):
                     pass
     return pages
 
-# ==================== تحميل القواعد ====================
 def clean_text_for_telegram(text):
     if not text:
         return text
@@ -305,22 +269,40 @@ def load_grammar_rules():
                     pass
     return rules
 
-# ==================== تحميل الاختبارات ====================
+# ==================== تحميل الاختبارات (مع المجلدات الفرعية) ====================
+TESTS_BY_LEVEL = {
+    "beginner_1": [],
+    "beginner_2": [],
+    "intermediate_1": [],
+    "intermediate_2": [],
+    "advanced": []
+}
+
 def load_tests():
     tests = {}
     zip_path = "tests.zip"
     extract_dir = "tests_temp"
     
     if not os.path.exists(zip_path):
+        print("❌ tests.zip غير موجود")
         return tests
     
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
     
+    print("📦 فك ضغط tests.zip...")
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     
-    for root, _, files in os.walk(extract_dir):
+    # تنظيف المستويات
+    for level in TESTS_BY_LEVEL:
+        TESTS_BY_LEVEL[level] = []
+    
+    for root, dirs, files in os.walk(extract_dir):
+        level = os.path.basename(root)
+        if level not in TESTS_BY_LEVEL:
+            continue
+        
         for file in files:
             if file.endswith(".json"):
                 file_path = os.path.join(root, file)
@@ -331,10 +313,12 @@ def load_tests():
                         if grammar_name:
                             tests[grammar_name] = {
                                 "data": data,
-                                "level": "beginner_1"
+                                "level": level
                             }
-                except:
-                    pass
+                            TESTS_BY_LEVEL[level].append(grammar_name)
+                            print(f"✅ {grammar_name} → {level}")
+                except Exception as e:
+                    print(f"⚠️ خطأ في {file}: {e}")
     
     shutil.rmtree(extract_dir)
     return tests
@@ -351,7 +335,6 @@ GRAMMAR_RULES = load_grammar_rules()
 print("📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
-# تهيئة قاعدة البيانات
 init_db()
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
@@ -362,20 +345,15 @@ STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
 ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
-# ترتيب الاختبارات حسب المستوى
-TESTS_BY_LEVEL = {
-    "beginner_1": list(TESTS.keys()),
-    "beginner_2": [],
-    "intermediate_1": [],
-    "intermediate_2": [],
-    "advanced": []
-}
-
 print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
-print("✅ قاعدة البيانات: جاهزة")
+
+# طباعة المستويات
+print("📊 المستويات:")
+for level, tests_list in TESTS_BY_LEVEL.items():
+    print(f"   {level}: {len(tests_list)} اختبار")
 
 # ==================== دوال العرض ====================
 def format_text(content):
@@ -475,7 +453,11 @@ def get_grammar_buttons():
 
 def get_level_buttons():
     level_names = {
-        "beginner_1": "🥉 مستوى مبتدئ 1"
+        "beginner_1": "🥉 مستوى مبتدئ 1",
+        "beginner_2": "🥈 مستوى مبتدئ 2",
+        "intermediate_1": "🥇 مستوى متوسط 1",
+        "intermediate_2": "🏆 مستوى متوسط 2",
+        "advanced": "⭐ مستوى متقدم"
     }
     buttons = []
     for level_id, level_name in level_names.items():
@@ -656,16 +638,16 @@ def contact_teacher(chat_id):
 
 def show_my_balance(chat_id, user_id):
     if user_id == ADMIN_ID:
-        text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود (بدون قيود)"
+        text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود"
     elif is_subscribed(user_id):
         subs = load_subs()
         expiry = subs.get(str(user_id), "")
         expiry_date = expiry[:10] if expiry else "غير محدد"
-        text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي الاشتراك: {expiry_date}\n🎉 وصول غير محدود إلى جميع المحتويات"
+        text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry_date}\n🎉 وصول غير محدود"
     else:
         used = get_user_usage(user_id)
         remaining = FREE_REQUESTS - used
-        text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 بعد نفاذ الرصيد، اشترك بـ 50 ل.س فقط للحصول على:\n✓ وصول غير محدود\n✓ الترجمة الكاملة\n✓ حلول التمارين\n✓ جميع الاختبارات\n✓ خاصية الصوت\n\n📞 سيريتل كاش: 15570270"
+        text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
 # ==================== معالج Webhook ====================
@@ -848,12 +830,10 @@ def webhook():
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # أمر عرض الرصيد
         if text == "📊 رصيدي":
             show_my_balance(chat_id, user_id)
             return "OK"
         
-        # بدء أو الرئيسية
         if text == '/start' or text == "🏠 الرئيسية":
             keyboard = get_user_menu(user_id)
             remaining_msg = get_usage_message(user_id)
@@ -866,7 +846,7 @@ def webhook():
         elif text == "📖 كتاب الطالب":
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
@@ -874,7 +854,7 @@ def webhook():
         elif text == "✏️ كتاب الأنشطة":
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
@@ -882,7 +862,7 @@ def webhook():
         elif text == "📚 القواعد":
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
                 return "OK"
             if GRAMMAR_RULES:
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
@@ -892,7 +872,7 @@ def webhook():
         elif text == "📝 تمارين":
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
                 return "OK"
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
         
@@ -927,7 +907,7 @@ def webhook():
         elif text.isdigit():
             if not check_and_deduct_request(user_id):
                 remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
                 return "OK"
             selected_book = user_book_choice.get(user_id)
             if selected_book == "student":
@@ -952,11 +932,6 @@ def webhook():
     return "OK"
 
 if __name__ == '__main__':
-    # تهيئة قاعدة البيانات
     init_db()
-    
-    # تحميل البيانات من SQLite إلى الذاكرة (للتأكد من التوافق)
-    # دوال load_subs, save_subs, load_pending, save_pending تستخدم SQLite مباشرة
-    
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
