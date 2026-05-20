@@ -421,74 +421,45 @@ def contact_teacher(chat_id):
     send_message(chat_id, "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:", keyboard)
 
 # ==================== دوال الاختبارات ====================
-def start_test(chat_id, user_id, test_name):
-    if test_name not in TESTS:
-        send_message(chat_id, "❌ الاختبار غير موجود")
-        return
-    test = TESTS[test_name]["data"]
-    questions = test.get("questions", [])
-    if not questions:
-        send_message(chat_id, "❌ لا توجد أسئلة في هذا الاختبار")
-        return
-    user_test_data[user_id] = {
-        "test_name": test_name,
-        "questions": questions,
-        "current": 0,
-        "score": 0,
-        "total": len(questions),
-        "chat_id": chat_id
-    }
-    send_question(chat_id, user_id)
-
-def send_question(chat_id, user_id):
-    data = user_test_data.get(user_id)
-    if not data:
-        return
-    idx = data["current"]
-    if idx >= data["total"]:
-        show_test_result(chat_id, user_id)
-        return
-    q = data["questions"][idx]
-    text = f"📝 **{data['test_name'].replace('_', ' ').title()}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n**السؤال {idx+1} من {data['total']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {q['text']}\n\n📌 اختر الإجابة الصحيحة:"
-    buttons = get_test_question_buttons(idx, q["options"], data["total"])
-    send_message(chat_id, text, buttons, "Markdown")
-
-def show_test_result(chat_id, user_id):
-    data = user_test_data.pop(user_id, None)
-    if not data:
-        return
-    percentage = (data["score"] / data["total"]) * 100
-    text = f"📊 **نتيجة الاختبار**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ {data['score']} من {data['total']}\n📈 النسبة: {percentage:.0f}%\n\n🔙 اضغط /start للعودة"
-    send_message(chat_id, text, parse_mode="Markdown")
-
-def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
-    data = user_test_data.get(user_id)
-    if not data:
-        return
-    if question_idx != data["current"]:
-        return
-    q = data["questions"][question_idx]
-    is_correct = (answer_idx + 1) == q["correct"]
-    if is_correct:
-        data["score"] += 1
-        result_text = f"✅ **صحيح!**\n{q.get('explanation', '')}"
-    else:
-        correct_opt = q["options"][q["correct"] - 1]
-        result_text = f"❌ **خطأ!**\n✅ الإجابة الصحيحة: {correct_opt}\n{q.get('explanation', '')}"
-    data["current"] += 1
-    send_message(chat_id, result_text, parse_mode="Markdown")
-    send_question(chat_id, user_id)
-
-# ==================== معالج Webhook ====================
-@app.route('/')
-def home():
-    return "🤖 Bot is running!"
-
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    data = request.get_json()
-    if not data:
+# معالجة الأزرار
+if 'callback_query' in data:
+    cb = data['callback_query']
+    cb_data = cb['data']
+    chat_id = cb['message']['chat']['id']
+    msg_id = cb['message']['message_id']
+    user_id = cb['from']['id']
+    
+    # ✅ 1. الإجابة على سؤال الاختبار (الأولوية القصوى)
+    if cb_data.startswith("test_ans_"):
+        parts = cb_data.split("_")
+        if len(parts) >= 3:
+            q_idx = int(parts[2])
+            a_idx = int(parts[3])
+            handle_test_answer(chat_id, user_id, q_idx, a_idx)
         return "OK"
+    
+    # ✅ 2. اختيار اختبار معين
+    if cb_data.startswith("test_"):
+        test_name = cb_data.replace("test_", "")
+        delete_message(chat_id, msg_id)
+        start_test(chat_id, user_id, test_name)
+        return "OK"
+    
+    # ✅ 3. اختيار مستوى
+    if cb_data.startswith("level_"):
+        level_id = cb_data.replace("level_", "")
+        delete_message(chat_id, msg_id)
+        send_message(chat_id, f"📝 **اختر الاختبار من المستوى {level_id.replace('_', ' ')}:**", get_test_buttons(level_id))
+        return "OK"
+    
+    # ✅ 4. رجوع إلى المستويات
+    if cb_data == "back_to_levels":
+        delete_message(chat_id, msg_id)
+        send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+        return "OK"
+    
+    # ✅ 5. باقي المعالجات (القواعد، الاشتراك، الصوت، التنقل...)
+    # ... (باقي الكود)
     
     # معالجة الأزرار
     if 'callback_query' in data:
