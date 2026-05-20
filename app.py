@@ -126,38 +126,54 @@ def load_pages_from_zip(zip_path):
     return pages
 
 # ==================== تحميل القواعد ====================
+def clean_text_for_telegram(text):
+    """تنظيف النص من الرموز التي لا تظهر في Telegram"""
+    if not text:
+        return text
+    
+    # إزالة المستطيلات والرموز الخاصة
+    text = text.replace('┌', '')
+    text = text.replace('┐', '')
+    text = text.replace('└', '')
+    text = text.replace('┘', '')
+    text = text.replace('├', '')
+    text = text.replace('┤', '')
+    text = text.replace('─', '')
+    text = text.replace('│', '')
+    text = text.replace('█', '')
+    text = text.replace('░', '')
+    text = text.replace('▒', '')
+    text = text.replace('▓', '')
+    text = text.replace('┃', '')
+    text = text.replace('━', '')
+    text = text.replace('┏', '')
+    text = text.replace('┓', '')
+    text = text.replace('┗', '')
+    text = text.replace('┛', '')
+    
+    # تنظيف العلامات الزائدة
+    text = text.replace('**', '')
+    text = text.replace('__', '')
+    
+    # إزالة المسافات الزائدة
+    text = re.sub(r'\n{4,}', '\n\n', text)
+    
+    return text.strip()
+
 def load_grammar_rules():
     rules = {}
     zip_path = "lessons.zip"
     extract_dir = "lessons"
     
-    # تشخيص: هل الملف موجود؟
     if not os.path.exists(zip_path):
-        print(f"❌ {zip_path} غير موجود في المسار: {os.getcwd()}")
-        print(f"📂 الملفات الموجودة: {os.listdir('.')}")
+        print(f"❌ {zip_path} غير موجود")
         return rules
     
-    print(f"✅ تم العثور على {zip_path}")
-    
-    # تشخيص: فك الضغط
     if not os.path.exists(extract_dir):
-        print(f"📦 جاري فك ضغط {zip_path}...")
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-        print(f"✅ تم فك الضغط إلى {extract_dir}")
-    else:
-        print(f"✅ المجلد {extract_dir} موجود مسبقاً")
+        print("✅ تم فك ضغط lessons.zip")
     
-    # تشخيص: ما هي الملفات الموجودة؟
-    if os.path.exists(extract_dir):
-        print(f"📂 محتويات مجلد {extract_dir}: {os.listdir(extract_dir)}")
-        for root, dirs, files in os.walk(extract_dir):
-            print(f"📁 في {root}: {files}")
-    else:
-        print(f"❌ مجلد {extract_dir} غير موجود بعد فك الضغط!")
-        return rules
-    
-    # قراءة الملفات
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
@@ -165,12 +181,14 @@ def load_grammar_rules():
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         rule_name = file.replace(".txt", "")
-                        rules[rule_name] = f.read()
+                        content = f.read()
+                        # تنظيف المحتوى
+                        content = clean_text_for_telegram(content)
+                        rules[rule_name] = content
                         print(f"✅ تم تحميل قاعدة: {rule_name}")
                 except Exception as e:
                     print(f"⚠️ خطأ في {file}: {e}")
     
-    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
 
 print("📚 تحميل كتاب الطالب...")
@@ -428,7 +446,14 @@ def webhook():
                         [{"text": "🔙 رجوع إلى القائمة", "callback_data": "back_to_grammar"}]
                     ]
                 }
-                send_message(chat_id, content, keyboard)
+                # تقسيم النص الطويل
+                if len(content) > 4000:
+                    parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
+                    send_message(chat_id, parts[0], keyboard)
+                    for part in parts[1:]:
+                        send_message(chat_id, part)
+                else:
+                    send_message(chat_id, content, keyboard)
             else:
                 send_message(chat_id, "❌ القاعدة غير موجودة")
             return "OK"
@@ -436,7 +461,7 @@ def webhook():
         # رجوع إلى قائمة القواعد
         if cb_data == "back_to_grammar":
             delete_message(chat_id, msg_id)
-            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons(), "Markdown")
+            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
         # اختيار الباقة
@@ -476,8 +501,8 @@ def webhook():
                 save_subs(subs)
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, f"✅ تم تفعيل الاشتراك بنجاح!", parse_mode="Markdown")
-                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"✅ تم تفعيل الاشتراك بنجاح!")
+                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.")
             return "OK"
         
         # رفض اشتراك
@@ -488,8 +513,8 @@ def webhook():
                 user_id = pending[invoice_id]["user_id"]
                 del pending[invoice_id]
                 save_pending(pending)
-                edit_message(chat_id, msg_id, f"❌ تم رفض الطلب", parse_mode="Markdown")
-                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, f"❌ تم رفض الطلب")
+                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.")
             return "OK"
         
         # تشغيل الصوت
@@ -535,8 +560,7 @@ def webhook():
                     mode = "original"
                 edit_message(chat_id, msg_id, 
                     f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                    get_page_buttons(book_type, page_num, mode, min_page, max_page),
-                    "Markdown")
+                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     # معالجة الرسائل النصية
@@ -559,7 +583,7 @@ def webhook():
                     [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
                 ]
             }
-            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard, "Markdown")
+            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard)
         
         # كتاب الطالب
         elif text == "📖 كتاب الطالب":
@@ -574,7 +598,7 @@ def webhook():
         # القواعد
         elif text == "📚 القواعد":
             if GRAMMAR_RULES:
-                send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons(), "Markdown")
+                send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             else:
                 send_message(chat_id, "📚 لا توجد قواعد متوفرة حالياً.")
         
@@ -604,7 +628,8 @@ def webhook():
                 "plan": plan_data["plan"]
             }
             save_pending(pending)
-            del user_plan_choice[user_id]
+            if user_id in user_plan_choice:
+                del user_plan_choice[user_id]
             
             send_message(chat_id, 
                 f"✅ **تم استلام طلبك بنجاح!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -612,8 +637,7 @@ def webhook():
                 f"💰 المبلغ: {plan_data['amount']} ل.س\n"
                 f"📌 رقم العملية: `{text}`\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.",
-                parse_mode="Markdown")
+                f"⏳ سيتم مراجعة بياناتك وإعلامك بقبول الاشتراك خلال وقت قصير.")
             
             keyboard = {
                 "inline_keyboard": [
@@ -630,8 +654,7 @@ def webhook():
                 f"💰 {plan_data['amount']} ل.س\n"
                 f"📌 رقم العملية: `{text}`\n"
                 f"📌 رقم الطلب: `{invoice_id}`",
-                keyboard,
-                "Markdown")
+                keyboard)
         
         # إذا كان رقماً (صفحة من كتاب)
         elif text.isdigit():
@@ -642,8 +665,7 @@ def webhook():
                     content = format_text(page.get("content_original", ""))
                     send_message(chat_id, 
                         f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                        get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX),
-                        "Markdown")
+                        get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الطالب")
             elif selected_book == "activity":
@@ -652,8 +674,7 @@ def webhook():
                     content = format_text(page.get("content_original", ""))
                     send_message(chat_id, 
                         f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                        get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX),
-                        "Markdown")
+                        get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الأنشطة")
             else:
