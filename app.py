@@ -269,58 +269,61 @@ def load_grammar_rules():
     zip_path = "lessons.zip"
     extract_dir = "lessons"
     
+    print("📦 جاري فتح lessons.zip...")
+    
     if not os.path.exists(zip_path):
-        print("⚠️ lessons.zip غير موجود")
+        print("❌ lessons.zip غير موجود")
         return rules
     
-    if not os.path.exists(extract_dir):
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(extract_dir)
+    # فك الضغط
+    if os.path.exists(extract_dir):
+        import shutil
+        shutil.rmtree(extract_dir)
     
-    for root, _, files in os.walk(extract_dir):
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.extractall(extract_dir)
+    print("✅ تم فك الضغط")
+    
+    # البحث عن جميع ملفات .txt
+    txt_files = []
+    for root, dirs, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
-                file_path = os.path.join(root, file)
-                try:
-                    # محاولة قراءة الملف بعدة طرق
-                    content = None
-                    
-                    # الطريقة 1: UTF-8
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                    except:
-                        pass
-                    
-                    # الطريقة 2: UTF-8 مع تجاهل الأخطاء
-                    if not content:
-                        try:
-                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                content = f.read()
-                        except:
-                            pass
-                    
-                    # الطريقة 3: Latin-1
-                    if not content:
-                        try:
-                            with open(file_path, 'r', encoding='latin-1') as f:
-                                content = f.read()
-                        except:
-                            pass
-                    
-                    if content:
-                        rule_name = file.replace(".txt", "")
-                        # إزالة أي رموز غير مرغوب فيها من البداية
-                        content = content.lstrip('\ufeff')  # إزالة BOM
-                        content = content.lstrip()
-                        rules[rule_name] = clean_text_for_telegram(content)
-                        print(f"✅ تم تحميل {rule_name} - {len(content)} حرف")
-                    else:
-                        print(f"❌ فشل في قراءة {file}")
-                        
-                except Exception as e:
-                    print(f"⚠️ خطأ في {file}: {e}")
+                txt_files.append(os.path.join(root, file))
     
+    print(f"📄 تم العثور على {len(txt_files)} ملف")
+    
+    # قراءة كل ملف
+    for file_path in txt_files:
+        try:
+            # قراءة الملف
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # استخراج اسم القاعدة من اسم الملف
+            filename = os.path.basename(file_path)
+            rule_name = filename.replace(".txt", "").strip()
+            
+            if not content or len(content) < 10:
+                print(f"⚠️ {rule_name}: المحتوى فارغ أو قصير جداً")
+                continue
+            
+            # تنظيف المحتوى
+            content = content.replace('\ufeff', '')  # إزالة BOM
+            content = content.replace('\r\n', '\n')  # توحيد الأسطر
+            
+            # إضافة القاعدة إلى القاموس
+            rules[rule_name] = content
+            print(f"✅ {rule_name}: {len(content)} حرف")
+            
+        except Exception as e:
+            print(f"❌ خطأ في {file_path}: {e}")
+    
+    # تنظيف المجلد المؤقت
+    import shutil
+    shutil.rmtree(extract_dir)
+    
+    print(f"📚 تم تحميل {len(rules)} قاعدة بنجاح")
     return rules
 # ==================== تحميل الاختبارات ====================
 TESTS_BY_LEVEL = {
@@ -747,18 +750,31 @@ def webhook():
             return "OK"
         
         if cb_data.startswith("grammar_"):
-            rule_name = cb_data.replace("grammar_", "")
-            if rule_name in GRAMMAR_RULES:
-                content = GRAMMAR_RULES[rule_name]
-                send_message(chat_id, content, {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]})
-            else:
-                send_message(chat_id, "❌ القاعدة غير موجودة")
-            return "OK"
+    rule_name = cb_data.replace("grammar_", "")
+    
+    # طباعة للتشخيص (ستظهر في logs Render)
+    print(f"🔍 طلب عرض قاعدة: {rule_name}")
+    print(f"📚 القواعد المتوفرة: {list(GRAMMAR_RULES.keys())}")
+    
+    if rule_name in GRAMMAR_RULES:
+        content = GRAMMAR_RULES[rule_name]
+        print(f"✅ القاعدة موجودة، طول النص: {len(content)}")
         
-        if cb_data == "back_to_grammar":
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
-            return "OK"
+        # إرسال النص
+        keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
+        
+        if len(content) > 4000:
+            # تقسيم النص الطويل
+            send_message(chat_id, content[:4000], keyboard)
+            for i in range(4000, len(content), 4000):
+                send_message(chat_id, content[i:i+4000])
+        else:
+            send_message(chat_id, content, keyboard)
+    else:
+        print(f"❌ القاعدة {rule_name} غير موجودة!")
+        send_message(chat_id, f"❌ القاعدة غير موجودة\n\nالقواعد المتوفرة: {', '.join(list(GRAMMAR_RULES.keys())[:10])}")
+    
+    return "OK"
         
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
