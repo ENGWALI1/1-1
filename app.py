@@ -27,6 +27,9 @@ SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 
+# سرعات الصوت
+VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
+
 user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
@@ -166,13 +169,13 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     return requests.post(URL + "/editMessageText", json=data)
 
 def delete_message(chat_id, message_id):
-    requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
+    return requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
 
 def send_voice(chat_id, voice_path):
     with open(voice_path, 'rb') as audio:
         files = {'voice': audio}
         data = {"chat_id": chat_id, "protect_content": True}
-        requests.post(URL + "/sendVoice", files=files, data=data)
+        return requests.post(URL + "/sendVoice", files=files, data=data)
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -265,13 +268,11 @@ def load_grammar_rules():
         print(f"❌ {zip_path} غير موجود")
         return rules
     
-    # فك الضغط
     print(f"📦 فك ضغط {zip_path}...")
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     print("✅ تم فك الضغط")
     
-    # البحث عن جميع ملفات .txt
     txt_files = []
     for root, dirs, files in os.walk(extract_dir):
         for file in files:
@@ -280,7 +281,6 @@ def load_grammar_rules():
     
     print(f"📄 عدد ملفات TXT: {len(txt_files)}")
     
-    # قراءة كل ملف
     for file_path in txt_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -292,9 +292,7 @@ def load_grammar_rules():
         except Exception as e:
             print(f"⚠️ خطأ في {file_path}: {e}")
     
-    # تنظيف المجلد المؤقت
     shutil.rmtree(extract_dir)
-    
     print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
 
@@ -407,23 +405,46 @@ def format_exercises(exercises):
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     return result
 
-def text_to_audio(text, book_type, page_num):
+# ==================== دالة الصوت مع دعم السرعات ====================
+def text_to_audio(text, book_type, page_num, speed="عادي"):
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
-    clean_text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-    if len(clean_text) < 10:
+    
+    # تنظيف النص واستخراج الإنجليزي
+    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
+    clean_text = clean_text.replace('━', '').replace('**', '').replace('|', '')
+    clean_text = re.sub(r'\s+', ' ', clean_text)
+    
+    lines = clean_text.split('\n')
+    english_parts = []
+    for line in lines:
+        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
+        total_chars = len(line.strip())
+        if total_chars > 0:
+            arabic_ratio = arabic_chars / total_chars
+            if arabic_ratio < 0.5:
+                english_parts.append(line)
+    
+    clean_text = ' '.join(english_parts)
+    
+    if not clean_text or len(clean_text.strip()) < 10:
         clean_text = f"Page {page_num} of {book_type} book."
-    audio_path = os.path.join(audio_dir, f"{book_type}_{page_num}.mp3")
+    
+    rate = VOICE_RATES.get(speed, "-15%")
+    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
+    audio_path = os.path.join(audio_dir, audio_filename)
+    
     if os.path.exists(audio_path):
         return audio_path
+    
     async def _gen():
         try:
-            communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural")
+            communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural", rate=rate)
             await communicate.save(audio_path)
             return audio_path
         except:
             return None
+    
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -433,6 +454,7 @@ def text_to_audio(text, book_type, page_num):
     except:
         return None
 
+# ==================== دوال الأزرار ====================
 def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
     prefix = "student" if book_type == "student" else "activity"
@@ -446,7 +468,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
-            {"text": "🔊 الصوت", "callback_data": f"audio_{prefix}_{page_num}"},
+            {"text": "🔊 الصوت", "callback_data": f"audio_speed_{prefix}_{page_num}"},
             {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
         ])
     elif mode == 'translated':
@@ -461,6 +483,19 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
         ])
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
+
+def get_audio_speed_buttons(book_type, page_num):
+    prefix = "student" if book_type == "student" else "activity"
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🐢 بطيء", "callback_data": f"audio_{prefix}_{page_num}_بطيء"},
+                {"text": "🐕 عادي", "callback_data": f"audio_{prefix}_{page_num}_عادي"},
+                {"text": "🐇 سريع", "callback_data": f"audio_{prefix}_{page_num}_سريع"}
+            ],
+            [{"text": "🔙 رجوع", "callback_data": f"{prefix}_original_{page_num}"}]
+        ]
+    }
 
 def get_grammar_buttons():
     buttons = []
@@ -679,11 +714,10 @@ def webhook():
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
         
-        # ==================== عرض القواعد مع تقسيم النص الطويل ====================
+        # عرض القواعد مع تقسيم النص الطويل
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             
-            # كود تشخيصي
             print(f"🔍 طلب قاعدة: {rule_name}")
             print(f"📚 القواعد المتوفرة: {list(GRAMMAR_RULES.keys())}")
             
@@ -693,7 +727,6 @@ def webhook():
                 
                 keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
                 
-                # تقسيم النص الطويل (أكثر من 4000 حرف)
                 max_len = 4000
                 if len(content) <= max_len:
                     send_message(chat_id, content, keyboard)
@@ -713,6 +746,36 @@ def webhook():
         if cb_data == "back_to_grammar":
             delete_message(chat_id, msg_id)
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
+            return "OK"
+        
+        # قائمة سرعات الصوت
+        if cb_data.startswith("audio_speed_"):
+            parts = cb_data.split("_")
+            prefix = parts[2]
+            page_num = parts[3]
+            edit_message(chat_id, msg_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
+            return "OK"
+        
+        # تشغيل الصوت بالسرعة المختارة
+        if cb_data.startswith("audio_"):
+            if not check_and_deduct_request(user_id):
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
+                return "OK"
+            parts = cb_data.split("_")
+            prefix = parts[1]
+            page_num = parts[2]
+            speed = parts[3]
+            
+            send_message(chat_id, "🎵 جاري تجهيز الصوت...")
+            
+            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
+            if page_num in pages:
+                text = pages[page_num].get("content_original", "")
+                audio_path = text_to_audio(text, prefix, page_num, speed)
+                if audio_path:
+                    send_voice(chat_id, audio_path)
+                else:
+                    send_message(chat_id, "❌ حدث خطأ في إنشاء الصوت")
             return "OK"
         
         if cb_data.startswith("sub_"):
@@ -749,24 +812,6 @@ def webhook():
                 remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
                 send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
-            return "OK"
-        
-        if cb_data.startswith("audio_"):
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
-            parts = cb_data.split("_")
-            prefix = parts[1]
-            page_num = parts[2]
-            send_message(chat_id, "🎵 جاري تجهيز الصوت...")
-            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
-            if page_num in pages:
-                text = pages[page_num].get("content_original", "")
-                audio_path = text_to_audio(text, prefix, page_num)
-                if audio_path:
-                    send_voice(chat_id, audio_path)
-                else:
-                    send_message(chat_id, "❌ حدث خطأ في إنشاء الصوت")
             return "OK"
         
         parts = cb_data.split("_")
