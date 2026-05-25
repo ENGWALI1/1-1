@@ -39,30 +39,19 @@ GITHUB_REPO = "ENGWALI1/EngwAliBot"
 GITHUB_PATH = "bot_data.json"
 
 def save_to_github(data):
-    """حفظ البيانات إلى ملف على GitHub"""
     if not GITHUB_TOKEN:
-        print("⚠️ GITHUB_TOKEN غير موجود")
         return False
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-    
     content = json.dumps(data, indent=2, ensure_ascii=False)
     content_bytes = content.encode('utf-8')
     encoded_content = base64.b64encode(content_bytes).decode('utf-8')
     
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     response = requests.get(url, headers=headers)
     sha = response.json().get('sha') if response.status_code == 200 else None
     
-    payload = {
-        "message": "تحديث بيانات البوت",
-        "content": encoded_content,
-        "branch": "main"
-    }
+    payload = {"message": "تحديث بيانات البوت", "content": encoded_content, "branch": "main"}
     if sha:
         payload["sha"] = sha
     
@@ -70,17 +59,13 @@ def save_to_github(data):
     return response.status_code in [200, 201]
 
 def load_from_github():
-    """تحميل البيانات من ملف GitHub"""
     if not GITHUB_TOKEN:
         return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     response = requests.get(url, headers=headers)
+    
     if response.status_code == 200:
         content = response.json().get('content', '')
         if content:
@@ -88,19 +73,9 @@ def load_from_github():
             return json.loads(decoded)
     return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
 
-def save_all_data(subs, pending, usage):
-    """حفظ جميع البيانات مرة واحدة"""
-    data = {
-        "subscriptions": subs,
-        "pending_requests": pending,
-        "user_usage": usage
-    }
-    save_to_github(data)
-
-# ==================== دوال الاشتراك ====================
+# ==================== دوال الاشتراك والاستخدام ====================
 def load_subs():
-    data = load_from_github()
-    return data.get("subscriptions", {})
+    return load_from_github().get("subscriptions", {})
 
 def save_subs(subs):
     data = load_from_github()
@@ -108,12 +83,19 @@ def save_subs(subs):
     save_to_github(data)
 
 def load_pending():
-    data = load_from_github()
-    return data.get("pending_requests", {})
+    return load_from_github().get("pending_requests", {})
 
 def save_pending(pending):
     data = load_from_github()
     data["pending_requests"] = pending
+    save_to_github(data)
+
+def load_user_usage():
+    return load_from_github().get("user_usage", {})
+
+def save_user_usage(usage):
+    data = load_from_github()
+    data["user_usage"] = usage
     save_to_github(data)
 
 def is_subscribed(user_id):
@@ -143,16 +125,6 @@ def remove_pending_request(invoice_id):
         del pending[invoice_id]
         save_pending(pending)
 
-# ==================== دوال الاستخدام (10 طلبات مجانية) ====================
-def load_user_usage():
-    data = load_from_github()
-    return data.get("user_usage", {})
-
-def save_user_usage(usage):
-    data = load_from_github()
-    data["user_usage"] = usage
-    save_to_github(data)
-
 def get_user_usage(user_id):
     usage = load_user_usage()
     return usage.get(str(user_id), 0)
@@ -173,8 +145,7 @@ def reset_user_usage(user_id):
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return True
-    used = get_user_usage(user_id)
-    if used >= FREE_REQUESTS:
+    if get_user_usage(user_id) >= FREE_REQUESTS:
         return False
     increment_user_usage(user_id)
     return True
@@ -182,8 +153,7 @@ def check_and_deduct_request(user_id):
 def get_remaining_requests(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    used = get_user_usage(user_id)
-    remaining = FREE_REQUESTS - used
+    remaining = FREE_REQUESTS - get_user_usage(user_id)
     return max(0, remaining)
 
 def get_usage_message(user_id):
@@ -201,11 +171,7 @@ def get_usage_message(user_id):
 
 # ==================== دوال مساعدة مع حماية المحتوى ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
-    data = {
-        "chat_id": chat_id, 
-        "text": text,
-        "protect_content": True
-    }
+    data = {"chat_id": chat_id, "text": text, "protect_content": True}
     if reply_markup:
         data["reply_markup"] = reply_markup
     if parse_mode:
@@ -213,12 +179,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     return requests.post(URL + "/sendMessage", json=data)
 
 def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
-    data = {
-        "chat_id": chat_id, 
-        "message_id": message_id, 
-        "text": text,
-        "protect_content": True
-    }
+    data = {"chat_id": chat_id, "message_id": message_id, "text": text, "protect_content": True}
     if reply_markup:
         data["reply_markup"] = reply_markup
     if parse_mode:
@@ -271,7 +232,7 @@ def get_user_menu(user_id):
     else:
         return unsubscribed_menu
 
-# ==================== تحميل البيانات من ZIP ====================
+# ==================== فك ضغط وتحميل البيانات ====================
 def load_pages_from_zip(zip_path):
     pages = {}
     extract_dir = zip_path.replace(".zip", "")
@@ -299,11 +260,11 @@ def load_pages_from_zip(zip_path):
                                     break
                         pages[page_num] = {
                             "title": data.get("title", f"صفحة {page_num}"),
-                            "content_original": data.get("content_original", ""),
+                            "content_original": data.get("content_original", data.get("content", "")),
                             "content_line_by_line": data.get("content_line_by_line", []),
-                            "exercises": data.get("exercises", [])
+                            "exercises": data.get("exercises", data.get("solved", data.get("answers", [])))
                         }
-                except:
+                except Exception as e:
                     pass
     return pages
 
@@ -344,11 +305,7 @@ def load_grammar_rules():
 
 # ==================== تحميل الاختبارات ====================
 TESTS_BY_LEVEL = {
-    "beginner_1": [],
-    "beginner_2": [],
-    "intermediate_1": [],
-    "intermediate_2": [],
-    "advanced": []
+    "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
 }
 
 def load_tests():
@@ -357,13 +314,11 @@ def load_tests():
     extract_dir = "tests_temp"
     
     if not os.path.exists(zip_path):
-        print("❌ tests.zip غير موجود")
         return tests
     
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
     
-    print("📦 فك ضغط tests.zip...")
     with zipfile.ZipFile(zip_path, 'r') as z:
         z.extractall(extract_dir)
     
@@ -383,14 +338,10 @@ def load_tests():
                         data = json.load(f)
                         grammar_name = data.get("grammar_name")
                         if grammar_name:
-                            tests[grammar_name] = {
-                                "data": data,
-                                "level": level
-                            }
+                            tests[grammar_name] = {"data": data, "level": level}
                             TESTS_BY_LEVEL[level].append(grammar_name)
-                            print(f"✅ {grammar_name} → {level}")
-                except Exception as e:
-                    print(f"⚠️ خطأ في {file}: {e}")
+                except:
+                    pass
     
     shutil.rmtree(extract_dir)
     return tests
@@ -420,11 +371,7 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
 
-print("📊 المستويات:")
-for level, tests_list in TESTS_BY_LEVEL.items():
-    print(f"   {level}: {len(tests_list)} اختبار")
-
-# ==================== دوال العرض ====================
+# ==================== دوال العرض (تدعم جميع أنواع التمارين) ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
@@ -445,16 +392,50 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
+    """تنسيق حل التمارين (يدعم جميع الصيغ الممكنة)"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
+    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
     for i, ex in enumerate(exercises, 1):
-        if isinstance(ex, dict):
-            question = ex.get('text') or ex.get('question') or f'سؤال {i}'
-            answer = ex.get('answer') or '---'
+        # حالة 1: نص عادي
+        if isinstance(ex, str):
+            result += f"**{i}. {ex[:200]}**\n\n"
+        
+        # حالة 2: قاموس
+        elif isinstance(ex, dict):
+            # البحث عن السؤال
+            question = (ex.get('text') or ex.get('question') or ex.get('q') or 
+                       ex.get('sentence') or ex.get('prompt') or f'سؤال {i}')
+            
+            # البحث عن الجواب
+            answer = (ex.get('answer') or ex.get('a') or ex.get('solution') or 
+                     ex.get('correct') or ex.get('response') or 'لم يتم توفير حل')
+            
+            # إذا كان الجواب قائمة
+            if isinstance(answer, list):
+                answer = '\n   • ' + '\n   • '.join(str(a) for a in answer)
+                answer = f"• {answer}"
+            
+            # إذا كان الجواب منطقياً
+            if isinstance(answer, bool):
+                answer = "صحيح" if answer else "خطأ"
+            
+            # تنظيف
+            if isinstance(answer, str):
+                answer = answer.replace('*', '').replace('_', '')
+            
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
+        
+        # حالة 3: قائمة
+        elif isinstance(ex, list):
+            result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
+        
+        # حالة 4: أي شيء آخر
         else:
-            result += f"**{i}. {ex}**\n\n"
+            result += f"**{i}. {str(ex)[:200]}**\n\n"
+    
     return result
 
 def text_to_audio(text, book_type, page_num):
@@ -548,7 +529,7 @@ def get_test_buttons(level_id):
 def start_test(chat_id, user_id, test_name):
     if not check_and_deduct_request(user_id):
         remaining = get_remaining_requests(user_id)
-        send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ رصيدك المتبقي: {remaining}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود", parse_mode="Markdown")
+        send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
         return
     
     if test_name not in TESTS:
@@ -570,13 +551,12 @@ def start_test(chat_id, user_id, test_name):
         "score": 0,
         "total": len(questions)
     }
-    
     send_question(chat_id, user_id)
 
 def send_question(chat_id, user_id):
     data = user_test_data.get(user_id)
     if not data:
-        send_message(chat_id, "❌ انتهت الجلسة. ابدأ اختباراً جديداً من قائمة التمارين.")
+        send_message(chat_id, "❌ انتهت الجلسة. ابدأ اختباراً جديداً.")
         return
     
     current = data["current"]
@@ -585,7 +565,6 @@ def send_question(chat_id, user_id):
         return
     
     q = data["questions"][current]
-    
     question_text = q['text'].replace('*', '').replace('_', '').replace('`', '')
     
     text = f"📝 *{data['test_title']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n*السؤال {current + 1} من {data['total']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n❓ {question_text}\n\n📌 اختر الإجابة الصحيحة:"
@@ -595,8 +574,7 @@ def send_question(chat_id, user_id):
         opt_text = str(opt).replace('*', '').replace('_', '').replace('`', '')
         buttons.append([{"text": f"{i+1}. {opt_text}", "callback_data": f"test_ans_{current}_{i}"}])
     
-    keyboard = {"inline_keyboard": buttons}
-    send_message(chat_id, text, keyboard, "Markdown")
+    send_message(chat_id, text, {"inline_keyboard": buttons}, "Markdown")
 
 def show_test_result(chat_id, user_id):
     data = user_test_data.pop(user_id, None)
@@ -604,7 +582,6 @@ def show_test_result(chat_id, user_id):
         return
     
     percentage = (data["score"] / data["total"]) * 100
-    
     if percentage >= 90:
         rating = "⭐ ممتاز!"
     elif percentage >= 75:
@@ -616,18 +593,12 @@ def show_test_result(chat_id, user_id):
     else:
         rating = "📚 حاول مرة أخرى"
     
-    text = f"📊 **نتيجة الاختبار**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📝 {data['test_title']}\n✅ {data['score']} من {data['total']}\n📈 النسبة: {percentage:.0f}%\n⭐ {rating}\n\n🔙 اضغط /start للعودة إلى القائمة الرئيسية"
-    
-    keyboard = {"keyboard": [["🏠 الرئيسية"]], "resize_keyboard": True}
-    send_message(chat_id, text, keyboard, "Markdown")
+    text = f"📊 **نتيجة الاختبار**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📝 {data['test_title']}\n✅ {data['score']} من {data['total']}\n📈 النسبة: {percentage:.0f}%\n⭐ {rating}\n\n🔙 اضغط /start للعودة"
+    send_message(chat_id, text, {"keyboard": [["🏠 الرئيسية"]], "resize_keyboard": True}, "Markdown")
 
 def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
     data = user_test_data.get(user_id)
-    if not data:
-        send_message(chat_id, "❌ انتهت الجلسة. ابدأ اختباراً جديداً من قائمة التمارين.")
-        return
-    
-    if question_idx != data["current"]:
+    if not data or question_idx != data["current"]:
         return
     
     q = data["questions"][question_idx]
@@ -648,7 +619,7 @@ def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
     else:
         send_question(chat_id, user_id)
 
-# ==================== دوال الاشتراك والإدارة ====================
+# ==================== دوال الإدارة ====================
 def show_pending_requests(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
@@ -698,6 +669,31 @@ def show_my_balance(chat_id, user_id):
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
+# ==================== كود تشخيصي لفحص الصفحات ====================
+@app.route('/check_page/<page_num>')
+def check_page(page_num):
+    if not is_subscribed(ADMIN_ID):
+        return "غير مصرح", 403
+    
+    if page_num in STUDENT_PAGES:
+        page = STUDENT_PAGES[page_num]
+        exercises = page.get("exercises", [])
+        
+        result = f"📄 صفحة {page_num}\n"
+        result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
+        result += f"🔢 عدد التمارين: {len(exercises)}\n"
+        if exercises:
+            result += f"\n📌 أول تمرين:\n"
+            first = exercises[0]
+            if isinstance(first, dict):
+                result += f"   المفاتيح: {list(first.keys())}\n"
+                result += f"   المحتوى: {str(first)[:200]}"
+            else:
+                result += f"   المحتوى: {str(first)[:200]}"
+        return result, 200
+    
+    return f"❌ الصفحة {page_num} غير موجودة", 404
+
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
@@ -733,7 +729,7 @@ def webhook():
         if cb_data.startswith("level_"):
             level_id = cb_data.replace("level_", "")
             delete_message(chat_id, msg_id)
-            send_message(chat_id, f"📝 **اختر الاختبار:**", get_test_buttons(level_id))
+            send_message(chat_id, "📝 **اختر الاختبار:**", get_test_buttons(level_id))
             return "OK"
         
         if cb_data == "back_to_levels":
@@ -742,23 +738,15 @@ def webhook():
             return "OK"
         
         if cb_data == "main_menu":
-            keyboard = get_user_menu(chat_id)
             delete_message(chat_id, msg_id)
-            send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", keyboard)
+            send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
         
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             if rule_name in GRAMMAR_RULES:
                 content = GRAMMAR_RULES[rule_name]
-                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع إلى القائمة", "callback_data": "back_to_grammar"}]]}
-                if len(content) > 4000:
-                    parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
-                    send_message(chat_id, parts[0], keyboard)
-                    for part in parts[1:]:
-                        send_message(chat_id, part)
-                else:
-                    send_message(chat_id, content, keyboard)
+                send_message(chat_id, content, {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]})
             else:
                 send_message(chat_id, "❌ القاعدة غير موجودة")
             return "OK"
@@ -773,14 +761,13 @@ def webhook():
             amount = PRICES.get(plan, 50)
             numbers_text = "\n".join(SYRIATEL_NUMBERS)
             user_plan_choice[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction"}
-            keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}
             edit_message(chat_id, msg_id,
                 f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
                 f"💰 المبلغ: {amount} ل.س\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
                 f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
                 f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
-                f"مثال: `600044062208`", keyboard, "Markdown")
+                f"مثال: `600044062208`", {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
             return "OK"
         
         if cb_data.startswith("approve_"):
@@ -788,12 +775,11 @@ def webhook():
             pending = load_pending()
             if invoice_id in pending:
                 user_id = pending[invoice_id]["user_id"]
-                expiry = (datetime.now() + timedelta(days=30)).isoformat()
-                add_subscription(user_id, expiry)
+                add_subscription(user_id, (datetime.now() + timedelta(days=30)).isoformat())
                 reset_user_usage(user_id)
                 remove_pending_request(invoice_id)
-                edit_message(chat_id, msg_id, f"✅ تم تفعيل الاشتراك بنجاح!")
-                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**\n✅ يمكنك الآن الوصول إلى جميع محتويات البوت.")
+                edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
+                send_message(user_id, "🎉 **تم تفعيل اشتراكك بنجاح!**")
             return "OK"
         
         if cb_data.startswith("reject_"):
@@ -802,14 +788,13 @@ def webhook():
             if invoice_id in pending:
                 user_id = pending[invoice_id]["user_id"]
                 remove_pending_request(invoice_id)
-                edit_message(chat_id, msg_id, f"❌ تم رفض الطلب")
-                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**\nيرجى مراجعة بيانات الدفع أو التواصل مع الدعم الفني.")
+                edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
+                send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
             return "OK"
         
         if cb_data.startswith("audio_"):
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             parts = cb_data.split("_")
             prefix = parts[1]
@@ -819,17 +804,16 @@ def webhook():
             if page_num in pages:
                 text = pages[page_num].get("content_original", "")
                 audio_path = text_to_audio(text, prefix, page_num)
-                if audio_path and os.path.exists(audio_path):
+                if audio_path:
                     send_voice(chat_id, audio_path)
                 else:
-                    send_message(chat_id, "❌ عذراً، حدث خطأ في إنشاء الصوت")
+                    send_message(chat_id, "❌ حدث خطأ في إنشاء الصوت")
             return "OK"
         
         parts = cb_data.split("_")
         if len(parts) >= 3:
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             book_type = "student" if parts[0] == "student" else "activity"
             action = parts[1]
@@ -852,9 +836,7 @@ def webhook():
                 else:
                     content = format_text(page.get("content_original", ""))
                     mode = "original"
-                edit_message(chat_id, msg_id, 
-                    f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}",
-                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                edit_message(chat_id, msg_id, f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     if 'message' in data:
@@ -865,37 +847,30 @@ def webhook():
         
         if text == "📊 رصيدي":
             show_my_balance(chat_id, user_id)
-            return "OK"
         
-        if text == '/start' or text == "🏠 الرئيسية":
-            keyboard = get_user_menu(user_id)
-            remaining_msg = get_usage_message(user_id)
-            send_message(chat_id, f"🎉 مرحباً بك!\n\n{remaining_msg}", keyboard)
+        elif text == '/start' or text == "🏠 الرئيسية":
+            send_message(chat_id, f"🎉 مرحباً بك!\n\n{get_usage_message(user_id)}", get_user_menu(user_id))
         
         elif text == "💳 اشتراك":
-            keyboard = {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}
-            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard, "Markdown")
+            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
         
         elif text == "📖 كتاب الطالب":
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
         
         elif text == "✏️ كتاب الأنشطة":
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
         
         elif text == "📚 القواعد":
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             if GRAMMAR_RULES:
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
@@ -904,8 +879,7 @@ def webhook():
         
         elif text == "📝 تمارين":
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
         
@@ -934,13 +908,11 @@ def webhook():
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
             send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
-            keyboard = {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}
-            send_message(ADMIN_ID, f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", keyboard, "Markdown")
+            send_message(ADMIN_ID, f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
         
         elif text.isdigit():
             if not check_and_deduct_request(user_id):
-                remaining = get_remaining_requests(user_id)
-                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن للوصول غير المحدود", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             selected_book = user_book_choice.get(user_id)
             if selected_book == "student":
@@ -959,35 +931,10 @@ def webhook():
                 send_message(chat_id, "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)")
         
         else:
-            keyboard = get_user_menu(user_id)
-            send_message(chat_id, "اختر من القائمة 👇", keyboard)
+            send_message(chat_id, "اختر من القائمة 👇", get_user_menu(user_id))
     
     return "OK"
-    @app.route('/check_page/<page_num>')
-def check_page(page_num):
-    if not is_subscribed(ADMIN_ID):
-        return "غير مصرح", 403
-    
-    if page_num in STUDENT_PAGES:
-        page = STUDENT_PAGES[page_num]
-        exercises = page.get("exercises", [])
-        
-        result = f"📄 **صفحة {page_num}**\n"
-        result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
-        result += f"🔢 عدد التمارين: {len(exercises)}\n"
-        if exercises:
-            result += f"\n📌 أول تمرين:\n"
-            first = exercises[0]
-            if isinstance(first, dict):
-                result += f"   المفاتيح: {list(first.keys())}\n"
-                result += f"   المحتوى: {str(first)[:200]}"
-            else:
-                result += f"   المحتوى: {str(first)[:200]}"
-        return result, 200
-    
-    return f"❌ الصفحة {page_num} غير موجودة", 404
 
-# ==================== التشغيل ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
