@@ -261,50 +261,33 @@ def clean_text_for_telegram(text):
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
+# ==================== تحميل القواعد من مجلد عادي ====================
 def load_grammar_rules():
     rules = {}
-    zip_path = "lessons.zip"
-    extract_dir = "lessons"
+    folder_path = "lessons"
     
-    if not os.path.exists(zip_path):
-        print("⚠️ lessons.zip غير موجود")
+    if not os.path.exists(folder_path):
+        print(f"❌ مجلد {folder_path} غير موجود")
+        print(f"📂 الملفات الموجودة: {os.listdir('.')}")
         return rules
     
-    if not os.path.exists(extract_dir):
-        print("📦 فك ضغط lessons.zip...")
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(extract_dir)
-        print("✅ تم فك ضغط lessons.zip")
+    print(f"📂 فتح مجلد {folder_path}...")
+    txt_files = [f for f in os.listdir(folder_path) if f.endswith(".txt")]
+    print(f"📄 عدد ملفات TXT الموجودة: {len(txt_files)}")
     
-    # طباعة هيكل المجلدات
-    print("📂 هيكل مجلد lessons:")
-    for root, dirs, files in os.walk(extract_dir):
-        level = root.replace(extract_dir, '').count(os.sep)
-        indent = ' ' * 2 * level
-        print(f'{indent}📁 {os.path.basename(root)}/')
-        subindent = ' ' * 2 * (level + 1)
-        for file in files:
-            print(f'{subindent}📄 {file}')
-    
-    for root, _, files in os.walk(extract_dir):
-        for file in files:
-            if file.endswith(".txt"):
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        rule_name = file.replace(".txt", "")
-                        content = f.read()
-                        if content:
-                            rules[rule_name] = clean_text_for_telegram(content)
-                            print(f"✅ تم تحميل قاعدة: {rule_name} ({len(content)} حرف)")
-                        else:
-                            print(f"⚠️ الملف {file} فارغ")
-                except Exception as e:
-                    print(f"⚠️ خطأ في {file}: {e}")
-    
-    # تنظيف المجلد المؤقت
-    if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)
+    for file in txt_files:
+        file_path = os.path.join(folder_path, file)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                rule_name = file.replace(".txt", "")
+                content = f.read()
+                if content:
+                    rules[rule_name] = clean_text_for_telegram(content)
+                    print(f"✅ تم تحميل قاعدة: {rule_name} ({len(content)} حرف)")
+                else:
+                    print(f"⚠️ الملف {file} فارغ")
+        except Exception as e:
+            print(f"⚠️ خطأ في {file}: {e}")
     
     print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
