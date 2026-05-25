@@ -276,6 +276,16 @@ def load_grammar_rules():
             z.extractall(extract_dir)
         print("✅ تم فك ضغط lessons.zip")
     
+    # طباعة هيكل المجلدات
+    print("📂 هيكل مجلد lessons:")
+    for root, dirs, files in os.walk(extract_dir):
+        level = root.replace(extract_dir, '').count(os.sep)
+        indent = ' ' * 2 * level
+        print(f'{indent}📁 {os.path.basename(root)}/')
+        subindent = ' ' * 2 * (level + 1)
+        for file in files:
+            print(f'{subindent}📄 {file}')
+    
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
