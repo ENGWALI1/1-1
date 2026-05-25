@@ -258,7 +258,7 @@ def clean_text_for_telegram(text):
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
-# ==================== تحميل القواعد (يفك الضغط ويقرأ) ====================
+# ==================== تحميل القواعد ====================
 def load_grammar_rules():
     rules = {}
     zip_path = "lessons.zip"
@@ -410,7 +410,6 @@ def text_to_audio(text, book_type, page_num, speed="عادي"):
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
     
-    # تنظيف النص واستخراج الإنجليزي
     clean_text = text.replace('*', '').replace('_', '').replace('`', '')
     clean_text = clean_text.replace('━', '').replace('**', '').replace('|', '')
     clean_text = re.sub(r'\s+', ' ', clean_text)
@@ -714,7 +713,6 @@ def webhook():
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
         
-        # عرض القواعد مع تقسيم النص الطويل
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             
@@ -748,12 +746,14 @@ def webhook():
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
-        # قائمة سرعات الصوت
+        # قائمة سرعات الصوت (إرسال رسالة جديدة، لا تعديل للرسالة الأصلية)
         if cb_data.startswith("audio_speed_"):
             parts = cb_data.split("_")
             prefix = parts[2]
             page_num = parts[3]
-            edit_message(chat_id, msg_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
+            
+            # إرسال رسالة جديدة بأزرار السرعات (الصفحة الأصلية تبقى ظاهرة)
+            send_message(chat_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
             return "OK"
         
         # تشغيل الصوت بالسرعة المختارة
@@ -761,6 +761,7 @@ def webhook():
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
+            
             parts = cb_data.split("_")
             prefix = parts[1]
             page_num = parts[2]
