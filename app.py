@@ -371,7 +371,7 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
 
-# ==================== دوال العرض (تدعم جميع أنواع التمارين) ====================
+# ==================== دوال العرض ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
@@ -392,47 +392,49 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
-    """تنسيق حل التمارين (يدعم جميع الصيغ الممكنة)"""
+    """تنسيق حل التمارين (يدعم جميع الأنواع: عادي، speaking، matching)"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
     
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, ex in enumerate(exercises, 1):
-        # حالة 1: نص عادي
-        if isinstance(ex, str):
-            result += f"**{i}. {ex[:200]}**\n\n"
+        # تمرين محادثة (speaking)
+        if isinstance(ex, dict) and ex.get('type') == 'speaking':
+            questions = ex.get('questions', [])
+            answers = ex.get('answers', [])
+            result += f"**🗣️ نشاط المحادثة {i}:**\n"
+            for j, q in enumerate(questions):
+                result += f"**سؤال {j+1}:** {q}\n"
+                if j < len(answers):
+                    result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
+                result += "\n"
         
-        # حالة 2: قاموس
+        # تمرين مطابقة (matching)
+        elif isinstance(ex, dict) and ex.get('type') == 'matching':
+            result += f"**🔗 تمرين المزاوجة {i}:**\n"
+            result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
+        
+        # تمرين عادي (سؤال وجواب)
         elif isinstance(ex, dict):
-            # البحث عن السؤال
-            question = (ex.get('text') or ex.get('question') or ex.get('q') or 
-                       ex.get('sentence') or ex.get('prompt') or f'سؤال {i}')
+            question = ex.get('text') or ex.get('question') or f'سؤال {i}'
+            answer = ex.get('answer') or ex.get('a') or '---'
             
-            # البحث عن الجواب
-            answer = (ex.get('answer') or ex.get('a') or ex.get('solution') or 
-                     ex.get('correct') or ex.get('response') or 'لم يتم توفير حل')
-            
-            # إذا كان الجواب قائمة
             if isinstance(answer, list):
                 answer = '\n   • ' + '\n   • '.join(str(a) for a in answer)
                 answer = f"• {answer}"
             
-            # إذا كان الجواب منطقياً
-            if isinstance(answer, bool):
-                answer = "صحيح" if answer else "خطأ"
-            
-            # تنظيف
-            if isinstance(answer, str):
-                answer = answer.replace('*', '').replace('_', '')
-            
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
         
-        # حالة 3: قائمة
+        # نص عادي
+        elif isinstance(ex, str):
+            result += f"**{i}. {ex[:200]}**\n\n"
+        
+        # قائمة
         elif isinstance(ex, list):
             result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
         
-        # حالة 4: أي شيء آخر
+        # أي شيء آخر
         else:
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     
@@ -669,31 +671,30 @@ def show_my_balance(chat_id, user_id):
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
-# ==================== كود تشخيصي لفحص الصفحات ====================
+# ==================== كود تشخيصي ====================
 @app.route('/check_page/<page_num>')
 def check_page(page_num):
-    # إزالة شرط التحقق من الأدمن مؤقتاً
-    # if not is_subscribed(ADMIN_ID):
-    #     return "غير مصرح", 403
-    
-    if page_num in STUDENT_PAGES:
-        page = STUDENT_PAGES[page_num]
-        exercises = page.get("exercises", [])
+    if True:  # تخطي التحقق مؤقتاً
+        if page_num in STUDENT_PAGES:
+            page = STUDENT_PAGES[page_num]
+            exercises = page.get("exercises", [])
+            
+            result = f"📄 صفحة {page_num}\n"
+            result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
+            result += f"🔢 عدد التمارين: {len(exercises)}\n"
+            if exercises:
+                result += f"\n📌 أول تمرين:\n"
+                first = exercises[0]
+                if isinstance(first, dict):
+                    result += f"   المفاتيح: {list(first.keys())}\n"
+                    result += f"   المحتوى: {str(first)[:200]}"
+                else:
+                    result += f"   المحتوى: {str(first)[:200]}"
+            return result, 200
         
-        result = f"📄 صفحة {page_num}\n"
-        result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
-        result += f"🔢 عدد التمارين: {len(exercises)}\n"
-        if exercises:
-            result += f"\n📌 أول تمرين:\n"
-            first = exercises[0]
-            if isinstance(first, dict):
-                result += f"   المفاتيح: {list(first.keys())}\n"
-                result += f"   المحتوى: {str(first)[:200]}"
-            else:
-                result += f"   المحتوى: {str(first)[:200]}"
-        return result, 200
-    
-    return f"❌ الصفحة {page_num} غير موجودة", 404
+        return f"❌ الصفحة {page_num} غير موجودة", 404
+    return "غير مصرح", 403
+
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
