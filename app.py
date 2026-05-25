@@ -672,8 +672,9 @@ def show_my_balance(chat_id, user_id):
 # ==================== كود تشخيصي لفحص الصفحات ====================
 @app.route('/check_page/<page_num>')
 def check_page(page_num):
-    if not is_subscribed(ADMIN_ID):
-        return "غير مصرح", 403
+    # إزالة شرط التحقق من الأدمن مؤقتاً
+    # if not is_subscribed(ADMIN_ID):
+    #     return "غير مصرح", 403
     
     if page_num in STUDENT_PAGES:
         page = STUDENT_PAGES[page_num]
@@ -693,7 +694,6 @@ def check_page(page_num):
         return result, 200
     
     return f"❌ الصفحة {page_num} غير موجودة", 404
-
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
