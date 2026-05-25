@@ -251,16 +251,13 @@ def load_pages_from_zip(zip_path):
     return pages
 
 def clean_text_for_telegram(text):
-    """تنظيف النص من الرموز التي لا تظهر في Telegram مع الحفاظ على التنسيق"""
     if not text:
         return text
-    # إزالة الرموز الخاصة فقط، مع الحفاظ على علامات التنسيق
     text = text.replace('┌', '').replace('┐', '').replace('└', '').replace('┘', '')
     text = text.replace('├', '').replace('┤', '').replace('─', '').replace('│', '')
     text = text.replace('█', '').replace('░', '').replace('▒', '').replace('▓', '')
     text = text.replace('┃', '').replace('━', '').replace('┏', '').replace('┓', '')
     text = text.replace('┗', '').replace('┛', '')
-    # لا نحذف ** و __ لأنها تستخدم للتنسيق في Markdown
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
@@ -269,62 +266,39 @@ def load_grammar_rules():
     zip_path = "lessons.zip"
     extract_dir = "lessons"
     
-    print("📦 جاري فتح lessons.zip...")
-    
     if not os.path.exists(zip_path):
-        print("❌ lessons.zip غير موجود")
+        print("⚠️ lessons.zip غير موجود")
         return rules
     
-    # فك الضغط
-    if os.path.exists(extract_dir):
-        import shutil
-        shutil.rmtree(extract_dir)
+    if not os.path.exists(extract_dir):
+        print("📦 فك ضغط lessons.zip...")
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_dir)
+        print("✅ تم فك ضغط lessons.zip")
     
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_dir)
-    print("✅ تم فك الضغط")
-    
-    # البحث عن جميع ملفات .txt
-    txt_files = []
-    for root, dirs, files in os.walk(extract_dir):
+    for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
-                txt_files.append(os.path.join(root, file))
-    
-    print(f"📄 تم العثور على {len(txt_files)} ملف")
-    
-    # قراءة كل ملف
-    for file_path in txt_files:
-        try:
-            # قراءة الملف
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # استخراج اسم القاعدة من اسم الملف
-            filename = os.path.basename(file_path)
-            rule_name = filename.replace(".txt", "").strip()
-            
-            if not content or len(content) < 10:
-                print(f"⚠️ {rule_name}: المحتوى فارغ أو قصير جداً")
-                continue
-            
-            # تنظيف المحتوى
-            content = content.replace('\ufeff', '')  # إزالة BOM
-            content = content.replace('\r\n', '\n')  # توحيد الأسطر
-            
-            # إضافة القاعدة إلى القاموس
-            rules[rule_name] = content
-            print(f"✅ {rule_name}: {len(content)} حرف")
-            
-        except Exception as e:
-            print(f"❌ خطأ في {file_path}: {e}")
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        rule_name = file.replace(".txt", "")
+                        content = f.read()
+                        if content:
+                            rules[rule_name] = clean_text_for_telegram(content)
+                            print(f"✅ تم تحميل قاعدة: {rule_name} ({len(content)} حرف)")
+                        else:
+                            print(f"⚠️ الملف {file} فارغ")
+                except Exception as e:
+                    print(f"⚠️ خطأ في {file}: {e}")
     
     # تنظيف المجلد المؤقت
-    import shutil
-    shutil.rmtree(extract_dir)
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
     
-    print(f"📚 تم تحميل {len(rules)} قاعدة بنجاح")
+    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
+
 # ==================== تحميل الاختبارات ====================
 TESTS_BY_LEVEL = {
     "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
@@ -686,21 +660,19 @@ def show_my_balance(chat_id, user_id):
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
+# ==================== كود تشخيصي ====================
 @app.route('/check_grammar_details')
 def check_grammar_details():
-    # نزيل شرط التحقق من الاشتراك مؤقتاً
-    # if not is_subscribed(ADMIN_ID):
-    #     return "غير مصرح", 403
-
+    if not is_subscribed(ADMIN_ID):
+        return "غير مصرح", 403
+    
     result = "📚 **تفاصيل القواعد:**\n\n"
-
     for name, content in GRAMMAR_RULES.items():
-        # نفحص أن المحتوى موجود وطوله معقول
         status = "✅" if content and len(content) > 50 else "❌"
         length = len(content) if content else 0
         result += f"{status} {name} - {length} حرف\n"
-
     return result, 200
+
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
@@ -748,36 +720,21 @@ def webhook():
             delete_message(chat_id, msg_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
-
-
-
         
         if cb_data.startswith("grammar_"):
-    rule_name = cb_data.replace("grammar_", "")
-    
-    # طباعة للتشخيص (ستظهر في logs Render)
-    print(f"🔍 طلب عرض قاعدة: {rule_name}")
-    print(f"📚 القواعد المتوفرة: {list(GRAMMAR_RULES.keys())}")
-    
-    if rule_name in GRAMMAR_RULES:
-        content = GRAMMAR_RULES[rule_name]
-        print(f"✅ القاعدة موجودة، طول النص: {len(content)}")
+            rule_name = cb_data.replace("grammar_", "")
+            if rule_name in GRAMMAR_RULES:
+                content = GRAMMAR_RULES[rule_name]
+                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
+                send_message(chat_id, content, keyboard)
+            else:
+                send_message(chat_id, "❌ القاعدة غير موجودة")
+            return "OK"
         
-        # إرسال النص
-        keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
-        
-        if len(content) > 4000:
-            # تقسيم النص الطويل
-            send_message(chat_id, content[:4000], keyboard)
-            for i in range(4000, len(content), 4000):
-                send_message(chat_id, content[i:i+4000])
-        else:
-            send_message(chat_id, content, keyboard)
-    else:
-        print(f"❌ القاعدة {rule_name} غير موجودة!")
-        send_message(chat_id, f"❌ القاعدة غير موجودة\n\nالقواعد المتوفرة: {', '.join(list(GRAMMAR_RULES.keys())[:10])}")
-    
-    return "OK"
+        if cb_data == "back_to_grammar":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
+            return "OK"
         
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
