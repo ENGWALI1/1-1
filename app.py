@@ -255,27 +255,47 @@ def clean_text_for_telegram(text):
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
+# ==================== تحميل القواعد (يفك الضغط ويقرأ) ====================
 def load_grammar_rules():
     rules = {}
     zip_path = "lessons.zip"
-    extract_dir = "lessons"
+    extract_dir = "lessons_temp"
+    
     if not os.path.exists(zip_path):
+        print(f"❌ {zip_path} غير موجود")
         return rules
-    if not os.path.exists(extract_dir):
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(extract_dir)
-    for root, _, files in os.walk(extract_dir):
+    
+    # فك الضغط
+    print(f"📦 فك ضغط {zip_path}...")
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.extractall(extract_dir)
+    print("✅ تم فك الضغط")
+    
+    # البحث عن جميع ملفات .txt
+    txt_files = []
+    for root, dirs, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        rule_name = file.replace(".txt", "")
-                        rules[rule_name] = clean_text_for_telegram(f.read())
-                except:
-                    pass
-    if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)
+                txt_files.append(os.path.join(root, file))
+    
+    print(f"📄 عدد ملفات TXT: {len(txt_files)}")
+    
+    # قراءة كل ملف
+    for file_path in txt_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                filename = os.path.basename(file_path)
+                rule_name = filename.replace(".txt", "")
+                rules[rule_name] = clean_text_for_telegram(content)
+                print(f"✅ تم تحميل: {rule_name} ({len(content)} حرف)")
+        except Exception as e:
+            print(f"⚠️ خطأ في {file_path}: {e}")
+    
+    # تنظيف المجلد المؤقت
+    shutil.rmtree(extract_dir)
+    
+    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
 
 # ==================== تحميل الاختبارات ====================
