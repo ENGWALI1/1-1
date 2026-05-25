@@ -22,7 +22,7 @@ if not TOKEN:
     exit(1)
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
-ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح - أرسل /myid للتأكد
+ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
@@ -92,20 +92,13 @@ def save_data(data):
     try:
         r = requests.put(url, headers=headers, json=payload)
         if r.status_code in [200, 201]:
-            print(f"✅ تم الحفظ على GitHub ({len(data.get('subscriptions', {}))} مشترك)")
+            print(f"✅ تم الحفظ على GitHub")
         else:
             print(f"⚠️ فشل الحفظ: {r.status_code}")
     except Exception as e:
         print(f"⚠️ خطأ في الحفظ: {e}")
 
 # ==================== دوال البيانات ====================
-
-def ensure_pending_exists():
-    """تأكد من وجود pending_requests في البيانات"""
-    d = load_data()
-    if "pending_requests" not in d:
-        d["pending_requests"] = {}
-        save_data(d)
 
 def is_subscribed(user_id):
     d = load_data()
@@ -141,19 +134,24 @@ def reset_user_usage(user_id):
         save_data(d)
 
 def load_pending():
-    ensure_pending_exists()
-    return load_data().get("pending_requests", {})
+    d = load_data()
+    if "pending_requests" not in d:
+        d["pending_requests"] = {}
+        save_data(d)
+    return d.get("pending_requests", {})
 
 def save_pending(pending):
     d = load_data()
     d["pending_requests"] = pending
     save_data(d)
+    print(f"📝 تم حفظ {len(pending)} طلب معلق")
 
 def remove_pending_request(invoice_id):
     d = load_data()
     if invoice_id in d.get("pending_requests", {}):
         del d["pending_requests"][invoice_id]
         save_data(d)
+        print(f"🗑️ تم حذف الطلب {invoice_id}")
 
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID:
@@ -909,8 +907,6 @@ def webhook():
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             print(f"🔔 محاولة قبول الطلب: '{invoice_id}'")
-            print(f"   المستخدم الحالي: {user_id}")
-            print(f"   المسؤول المفترض: {ADMIN_ID}")
             
             if user_id != ADMIN_ID:
                 print(f"❌ المستخدم {user_id} ليس مسؤولاً!")
@@ -920,25 +916,20 @@ def webhook():
             pending = load_pending()
             print(f"   الطلبات المتوفرة: {list(pending.keys())}")
             
-            found = None
-            for inv_id in pending.keys():
-                if str(inv_id) == str(invoice_id):
-                    found = inv_id
-                    break
-            
-            if found:
-                p = pending[found]
+            # البحث عن الطلب
+            if invoice_id in pending:
+                p = pending[invoice_id]
                 user_id_target = p["user_id"]
                 expiry_date = (datetime.now() + timedelta(days=30)).isoformat()
                 add_subscription(user_id_target, expiry_date)
                 reset_user_usage(user_id_target)
-                remove_pending_request(found)
+                remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
                 send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**")
                 print(f"✅ تم تفعيل اشتراك المستخدم {user_id_target}")
             else:
-                print(f"❌ الطلب {invoice_id} غير موجود في قاعدة البيانات")
-                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود أو تم معالجته مسبقاً", parse_mode="Markdown")
+                print(f"❌ الطلب {invoice_id} غير موجود")
+                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود", parse_mode="Markdown")
             return "OK"
         
         if cb_data.startswith("reject_"):
@@ -950,15 +941,9 @@ def webhook():
                 return "OK"
             
             pending = load_pending()
-            found = None
-            for inv_id in pending.keys():
-                if str(inv_id) == str(invoice_id):
-                    found = inv_id
-                    break
-            
-            if found:
-                user_id_target = pending[found]["user_id"]
-                remove_pending_request(found)
+            if invoice_id in pending:
+                user_id_target = pending[invoice_id]["user_id"]
+                remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
                 send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
                 print(f"✅ تم رفض طلب المستخدم {user_id_target}")
@@ -1093,7 +1078,6 @@ def webhook():
             plan_data = user_plan_choice.get(user_id, {"plan": "1_month", "amount": 50})
             
             print(f"📝 حفظ طلب جديد: رقم الطلب {invoice_id} للمستخدم {user_id}")
-            print(f"   الطلبات قبل الحفظ: {list(pending.keys())}")
             
             pending[invoice_id] = {
                 "user_id": user_id,
@@ -1105,13 +1089,11 @@ def webhook():
             }
             save_pending(pending)
             
-            print(f"   الطلبات بعد الحفظ: {list(load_pending().keys())}")
-            
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
-            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
+            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
             send_message(ADMIN_ID, 
-                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 رقم التحويل: `{text}`\n📌 رقم الطلب: `{invoice_id}`", 
+                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 رقم التحويل: `{text}`\n📌 **رقم الطلب: `{invoice_id}`**", 
                         {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, 
                                             {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
             
