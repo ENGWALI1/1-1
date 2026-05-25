@@ -27,10 +27,10 @@ SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 
-# إعدادات GitHub
+# إعدادات GitHub - غير هذه القيم حسب حسابك
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = "ENGWALI1"  # اسم المستخدم/اسم المشروع
-GITHUB_FILE_PATH = "subscribers.json"  # مسار الملف في الريبو
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'ENGWALI1/ENGWALI1')  # غير هذا إلى اسم_المستخدم/اسم_المستودع
+GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
 VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
@@ -41,241 +41,109 @@ user_test_data = {}
 
 # ==================== دوال GitHub ====================
 
-GITHUB_ENABLED = False
-
-def init_github():
-    """تهيئة اتصال GitHub"""
-    global GITHUB_ENABLED
+def load_data():
     if not GITHUB_TOKEN:
-        print("⚠️ GITHUB_TOKEN غير موجود في المتغيرات البيئية")
-        GITHUB_ENABLED = False
-        return False
+        print("⚠️ GitHub غير متاح، استخدام بيانات فارغة")
+        return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
     
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            print("✅ تم الاتصال بـ GitHub بنجاح")
-            GITHUB_ENABLED = True
-            return True
-        else:
-            print(f"⚠️ فشل الاتصال بـ GitHub: {response.status_code}")
-            GITHUB_ENABLED = False
-            return False
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            content = base64.b64decode(r.json()['content']).decode()
+            return json.loads(content)
+        elif r.status_code == 404:
+            print("📁 ملف subscribers.json غير موجود، سيتم إنشاؤه")
+            default = {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
+            save_data(default)
+            return default
     except Exception as e:
-        print(f"❌ خطأ في الاتصال بـ GitHub: {e}")
-        GITHUB_ENABLED = False
-        return False
+        print(f"⚠️ خطأ في التحميل: {e}")
+    
+    return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
 
-def load_from_github():
-    """تحميل البيانات من GitHub"""
-    global GITHUB_ENABLED
+def save_data(data):
+    if not GITHUB_TOKEN:
+        print("⚠️ GitHub غير متاح، لم يتم الحفظ")
+        return
     
-    if not GITHUB_ENABLED:
-        print("⚠️ GitHub غير متاح، استخدام ملف محلي")
-        return load_from_local()
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    
-    try:
-        print(f"📥 تحميل البيانات من GitHub...")
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code == 200:
-            content = response.json().get('content', '')
-            if content:
-                decoded = base64.b64decode(content).decode('utf-8')
-                data = json.loads(decoded)
-                print(f"   ✅ تم تحميل {len(data.get('subscriptions', {}))} مشترك")
-                print(f"   ✅ {len(data.get('pending_requests', {}))} طلب معلق")
-                return data
-        elif response.status_code == 404:
-            print("   📁 الملف غير موجود، سيتم إنشاؤه")
-            default_data = {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-            save_to_github(default_data)
-            return default_data
-        else:
-            print(f"   ⚠️ خطأ: {response.status_code}")
-            
-    except Exception as e:
-        print(f"   ❌ خطأ: {e}")
-    
-    return load_from_local()
-
-def save_to_github(data):
-    """حفظ البيانات إلى GitHub"""
-    global GITHUB_ENABLED
-    
-    if not GITHUB_ENABLED:
-        print("⚠️ GitHub غير متاح، حفظ محلياً")
-        save_to_local(data)
-        return False
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    
-    content = json.dumps(data, ensure_ascii=False, indent=2)
-    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     
     sha = None
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            sha = response.json().get('sha')
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            sha = r.json()['sha']
     except:
         pass
     
-    payload = {
-        "message": f"Update subscribers data - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "content": encoded_content,
-        "branch": "main"
-    }
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    encoded = base64.b64encode(content.encode()).decode()
+    
+    payload = {"message": f"Update {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "content": encoded, "branch": "main"}
     if sha:
         payload["sha"] = sha
     
     try:
-        print(f"📤 حفظ البيانات إلى GitHub...")
-        print(f"   عدد المشتركين: {len(data.get('subscriptions', {}))}")
-        
-        response = requests.put(url, headers=headers, json=payload)
-        
-        if response.status_code in [200, 201]:
-            print(f"   ✅ تم الحفظ بنجاح!")
-            return True
+        r = requests.put(url, headers=headers, json=payload)
+        if r.status_code in [200, 201]:
+            print(f"✅ تم الحفظ على GitHub ({len(data.get('subscriptions', {}))} مشترك)")
         else:
-            print(f"   ❌ فشل الحفظ: {response.status_code}")
-            save_to_local(data)
-            return False
-            
+            print(f"⚠️ فشل الحفظ: {r.status_code}")
     except Exception as e:
-        print(f"   ❌ خطأ في الحفظ: {e}")
-        save_to_local(data)
-        return False
-
-def load_from_local():
-    """تحميل البيانات من ملف محلي"""
-    local_file = "subscribers_local.json"
-    try:
-        if os.path.exists(local_file):
-            with open(local_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                print(f"✅ تم تحميل البيانات من الملف المحلي ({len(data.get('subscriptions', {}))} مشترك)")
-                return data
-    except Exception as e:
-        print(f"⚠️ خطأ في تحميل الملف المحلي: {e}")
-    
-    return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-
-def save_to_local(data):
-    """حفظ البيانات إلى ملف محلي"""
-    local_file = "subscribers_local.json"
-    try:
-        with open(local_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ تم حفظ نسخة احتياطية محلياً ({len(data.get('subscriptions', {}))} مشترك)")
-    except Exception as e:
-        print(f"⚠️ خطأ في حفظ النسخة المحلية: {e}")
+        print(f"⚠️ خطأ في الحفظ: {e}")
 
 # ==================== دوال البيانات ====================
 
-_bot_data = None
-
-def get_all_data():
-    """الحصول على جميع البيانات"""
-    global _bot_data
-    
-    if _bot_data is None:
-        _bot_data = load_from_github()
-    
-    return _bot_data
-
-def save_all_data(data):
-    """حفظ جميع البيانات"""
-    global _bot_data
-    _bot_data = data
-    success = save_to_github(data)
-    save_to_local(data)
-    return success
-
-def force_reload_data():
-    """إعادة تحميل البيانات من GitHub"""
-    global _bot_data
-    _bot_data = load_from_github()
-    return _bot_data
-
 def is_subscribed(user_id):
-    data = get_all_data()
+    d = load_data()
     user_id_str = str(user_id)
-    if user_id_str in data.get("subscriptions", {}):
-        expiry = data["subscriptions"][user_id_str].get("expiry", "")
-        if expiry:
-            return datetime.now().isoformat() < expiry
+    if user_id_str in d.get("subscriptions", {}):
+        expiry = d["subscriptions"][user_id_str].get("expiry", "")
+        return expiry and datetime.now().isoformat() < expiry
     return False
 
 def add_subscription(user_id, expiry_date):
-    print(f"📝 إضافة اشتراك للمستخدم {user_id}")
-    data = get_all_data()
-    user_id_str = str(user_id)
-    
-    if "subscriptions" not in data:
-        data["subscriptions"] = {}
-    
-    data["subscriptions"][user_id_str] = {
+    d = load_data()
+    d["subscriptions"][str(user_id)] = {
         "expiry": expiry_date,
         "subscribed_at": datetime.now().isoformat()
     }
-    
-    return save_all_data(data)
+    save_data(d)
+    print(f"✅ تم إضافة اشتراك للمستخدم {user_id}")
 
 def get_user_usage(user_id):
-    data = get_all_data()
-    user_id_str = str(user_id)
-    if "user_usage" not in data:
-        data["user_usage"] = {}
-        save_all_data(data)
-    return data["user_usage"].get(user_id_str, 0)
+    return load_data().get("user_usage", {}).get(str(user_id), 0)
 
 def increment_user_usage(user_id):
-    data = get_all_data()
-    user_id_str = str(user_id)
-    if "user_usage" not in data:
-        data["user_usage"] = {}
-    data["user_usage"][user_id_str] = data["user_usage"].get(user_id_str, 0) + 1
-    save_all_data(data)
+    d = load_data()
+    if "user_usage" not in d:
+        d["user_usage"] = {}
+    d["user_usage"][str(user_id)] = d["user_usage"].get(str(user_id), 0) + 1
+    save_data(d)
 
 def reset_user_usage(user_id):
-    data = get_all_data()
-    user_id_str = str(user_id)
-    if "user_usage" in data:
-        data["user_usage"][user_id_str] = 0
-        save_all_data(data)
+    d = load_data()
+    if "user_usage" in d:
+        d["user_usage"][str(user_id)] = 0
+        save_data(d)
 
 def load_pending():
-    data = get_all_data()
-    return data.get("pending_requests", {})
+    return load_data().get("pending_requests", {})
 
 def save_pending(pending):
-    data = get_all_data()
-    data["pending_requests"] = pending
-    save_all_data(data)
+    d = load_data()
+    d["pending_requests"] = pending
+    save_data(d)
 
 def remove_pending_request(invoice_id):
-    data = get_all_data()
-    if "pending_requests" in data and invoice_id in data["pending_requests"]:
-        del data["pending_requests"][invoice_id]
-        save_all_data(data)
+    d = load_data()
+    if invoice_id in d.get("pending_requests", {}):
+        del d["pending_requests"][invoice_id]
+        save_data(d)
 
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID:
@@ -291,8 +159,7 @@ def check_and_deduct_request(user_id):
 def get_remaining_requests(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    used = get_user_usage(user_id)
-    remaining = FREE_REQUESTS - used
+    remaining = FREE_REQUESTS - get_user_usage(user_id)
     return max(0, remaining)
 
 def get_usage_message(user_id):
@@ -354,7 +221,7 @@ admin_menu = {
     "keyboard": [
         ["📖 كتاب الطالب", "✏️ كتاب الأنشطة"],
         ["📚 القواعد", "📝 تمارين", "💳 اشتراك"],
-        ["📋 طلبات الاشتراك", "👥 المشتركين", "🔄 تحديث البيانات"],
+        ["📋 طلبات الاشتراك", "👥 المشتركين"],
         ["📊 رصيدي", "🛠️ الدعم الفني", "🏠 الرئيسية"]
     ],
     "resize_keyboard": True
@@ -842,7 +709,7 @@ def show_active_subscriptions(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    data = get_all_data()
+    data = load_data()
     subscriptions = data.get("subscriptions", {})
     if not subscriptions:
         send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
@@ -861,7 +728,7 @@ def show_my_balance(chat_id, user_id):
     if user_id == ADMIN_ID:
         text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود"
     elif is_subscribed(user_id):
-        data = get_all_data()
+        data = load_data()
         expiry = data.get("subscriptions", {}).get(str(user_id), {}).get("expiry", "غير محدد")[:10]
         text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry}\n🎉 وصول غير محدود"
     else:
@@ -872,28 +739,13 @@ def show_my_balance(chat_id, user_id):
 
 # ==================== تحميل جميع البيانات ====================
 print("="*60)
-print("🚀 بدء تشغيل بوت تلغرام - النسخة النهائية")
+print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
 
-# تهيئة GitHub
-print("\n🔧 تهيئة الاتصال بـ GitHub...")
-print(f"   المستودع: {GITHUB_REPO}")
-print(f"   الملف: {GITHUB_FILE_PATH}")
-print(f"   Token موجود: {'✅ نعم' if GITHUB_TOKEN else '❌ لا'}")
-
-if GITHUB_TOKEN:
-    init_github()
-else:
-    print("⚠️ GITHUB_TOKEN غير موجود! يرجى إضافته في المتغيرات البيئية")
-    print("   سيتم حفظ البيانات محلياً فقط (ستحذف عند إعادة التشغيل)")
-
-# تحميل البيانات
 print("\n📁 تحميل بيانات المشتركين...")
-initial_data = get_all_data()
-print(f"\n📊 الحالة الحالية:")
+initial_data = load_data()
 print(f"   👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
 print(f"   📋 الطلبات المعلقة: {len(initial_data.get('pending_requests', {}))}")
-print(f"   📊 استخدامات المستخدمين: {len(initial_data.get('user_usage', {}))}")
 
 print("\n📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
@@ -916,14 +768,13 @@ ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
 print("\n" + "="*60)
-print("📊 ملخص التحميل النهائي")
+print("📊 ملخص التحميل")
 print("="*60)
 print(f"📖 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"📚 القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"📝 الاختبارات: {len(TESTS)} اختبار")
 print(f"👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
-print(f"🌐 GitHub: {'✅ متصل' if GITHUB_ENABLED else '⚠️ غير متصل (حفظ محلي)'}")
 print("="*60)
 print("✅ البوت جاهز للعمل!")
 print("="*60)
@@ -1047,11 +898,11 @@ def webhook():
             pending = load_pending()
             if invoice_id in pending:
                 user_id_target = pending[invoice_id]["user_id"]
-                print(f"\n🔔 تفعيل اشتراك للمستخدم {user_id_target}")
-                add_subscription(user_id_target, (datetime.now() + timedelta(days=30)).isoformat())
+                expiry_date = (datetime.now() + timedelta(days=30)).isoformat()
+                add_subscription(user_id_target, expiry_date)
                 reset_user_usage(user_id_target)
                 remove_pending_request(invoice_id)
-                edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح وحفظه!")
+                edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
                 send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**")
             return "OK"
         
@@ -1164,14 +1015,6 @@ def webhook():
             
         elif text == "👥 المشتركين":
             show_active_subscriptions(chat_id, user_id)
-            
-        elif text == "🔄 تحديث البيانات":
-            if user_id == ADMIN_ID:
-                force_reload_data()
-                data = get_all_data()
-                send_message(chat_id, f"✅ تم تحديث البيانات من GitHub!\n\n👥 عدد المشتركين: {len(data.get('subscriptions', {}))}\n📋 طلبات معلقة: {len(data.get('pending_requests', {}))}")
-            else:
-                send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
             
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
