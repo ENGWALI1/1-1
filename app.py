@@ -22,7 +22,7 @@ if not TOKEN:
     exit(1)
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
-ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح
+ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح - أرسل /myid للتأكد
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
@@ -100,6 +100,13 @@ def save_data(data):
 
 # ==================== دوال البيانات ====================
 
+def ensure_pending_exists():
+    """تأكد من وجود pending_requests في البيانات"""
+    d = load_data()
+    if "pending_requests" not in d:
+        d["pending_requests"] = {}
+        save_data(d)
+
 def is_subscribed(user_id):
     d = load_data()
     user_id_str = str(user_id)
@@ -134,6 +141,7 @@ def reset_user_usage(user_id):
         save_data(d)
 
 def load_pending():
+    ensure_pending_exists()
     return load_data().get("pending_requests", {})
 
 def save_pending(pending):
@@ -900,7 +908,7 @@ def webhook():
         
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
-            print(f"🔔 محاولة قبول الطلب: {invoice_id}")
+            print(f"🔔 محاولة قبول الطلب: '{invoice_id}'")
             print(f"   المستخدم الحالي: {user_id}")
             print(f"   المسؤول المفترض: {ADMIN_ID}")
             
@@ -910,39 +918,52 @@ def webhook():
                 return "OK"
             
             pending = load_pending()
-            print(f"   الطلبات المعلقة: {list(pending.keys())}")
+            print(f"   الطلبات المتوفرة: {list(pending.keys())}")
             
-            if invoice_id in pending:
-                user_id_target = pending[invoice_id]["user_id"]
+            found = None
+            for inv_id in pending.keys():
+                if str(inv_id) == str(invoice_id):
+                    found = inv_id
+                    break
+            
+            if found:
+                p = pending[found]
+                user_id_target = p["user_id"]
                 expiry_date = (datetime.now() + timedelta(days=30)).isoformat()
                 add_subscription(user_id_target, expiry_date)
                 reset_user_usage(user_id_target)
-                remove_pending_request(invoice_id)
+                remove_pending_request(found)
                 edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
                 send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**")
                 print(f"✅ تم تفعيل اشتراك المستخدم {user_id_target}")
             else:
-                print(f"❌ الطلب {invoice_id} غير موجود")
-                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود أو تم معالجته مسبقاً")
+                print(f"❌ الطلب {invoice_id} غير موجود في قاعدة البيانات")
+                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود أو تم معالجته مسبقاً", parse_mode="Markdown")
             return "OK"
         
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
-            print(f"🔔 محاولة رفض الطلب: {invoice_id}")
+            print(f"🔔 محاولة رفض الطلب: '{invoice_id}'")
             
             if user_id != ADMIN_ID:
                 send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
                 return "OK"
             
             pending = load_pending()
-            if invoice_id in pending:
-                user_id_target = pending[invoice_id]["user_id"]
-                remove_pending_request(invoice_id)
+            found = None
+            for inv_id in pending.keys():
+                if str(inv_id) == str(invoice_id):
+                    found = inv_id
+                    break
+            
+            if found:
+                user_id_target = pending[found]["user_id"]
+                remove_pending_request(found)
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
                 send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
                 print(f"✅ تم رفض طلب المستخدم {user_id_target}")
             else:
-                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود")
+                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود", parse_mode="Markdown")
             return "OK"
         
         parts = cb_data.split("_")
@@ -999,10 +1020,24 @@ def webhook():
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # أمر مؤقت لمعرفة معرف المستخدم
+        # أمر لمعرفة معرف المستخدم
         if text == "/myid":
             send_message(chat_id, f"🆔 معرفك هو: `{user_id}`\n👑 معرف المسؤول: `{ADMIN_ID}`", parse_mode="Markdown")
-            
+        
+        # أمر لعرض الطلبات المخزنة
+        elif text == "/show_pending":
+            if user_id == ADMIN_ID:
+                pending = load_pending()
+                if pending:
+                    response = "📋 **الطلبات المخزنة:**\n"
+                    for inv_id, p in pending.items():
+                        response += f"\n📌 `{inv_id}` → مستخدم: `{p['user_id']}`"
+                    send_message(chat_id, response, parse_mode="Markdown")
+                else:
+                    send_message(chat_id, "📭 لا توجد طلبات مخزنة")
+            else:
+                send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
+        
         elif text == "📊 رصيدي":
             show_my_balance(chat_id, user_id)
             
@@ -1056,6 +1091,10 @@ def webhook():
             pending = load_pending()
             invoice_id = str(random.randint(100000, 999999))
             plan_data = user_plan_choice.get(user_id, {"plan": "1_month", "amount": 50})
+            
+            print(f"📝 حفظ طلب جديد: رقم الطلب {invoice_id} للمستخدم {user_id}")
+            print(f"   الطلبات قبل الحفظ: {list(pending.keys())}")
+            
             pending[invoice_id] = {
                 "user_id": user_id,
                 "username": msg['from'].get('username', ''),
@@ -1065,11 +1104,14 @@ def webhook():
                 "plan": plan_data["plan"]
             }
             save_pending(pending)
+            
+            print(f"   الطلبات بعد الحفظ: {list(load_pending().keys())}")
+            
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
-            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
+            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
             send_message(ADMIN_ID, 
-                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", 
+                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 رقم التحويل: `{text}`\n📌 رقم الطلب: `{invoice_id}`", 
                         {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, 
                                             {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
             
