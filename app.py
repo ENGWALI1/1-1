@@ -274,26 +274,54 @@ def load_grammar_rules():
         return rules
     
     if not os.path.exists(extract_dir):
-        print("📦 فك ضغط lessons.zip...")
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-        print("✅ تم فك ضغط lessons.zip")
     
     for root, _, files in os.walk(extract_dir):
         for file in files:
             if file.endswith(".txt"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    # محاولة قراءة الملف بعدة طرق
+                    content = None
+                    
+                    # الطريقة 1: UTF-8
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                    except:
+                        pass
+                    
+                    # الطريقة 2: UTF-8 مع تجاهل الأخطاء
+                    if not content:
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                        except:
+                            pass
+                    
+                    # الطريقة 3: Latin-1
+                    if not content:
+                        try:
+                            with open(file_path, 'r', encoding='latin-1') as f:
+                                content = f.read()
+                        except:
+                            pass
+                    
+                    if content:
                         rule_name = file.replace(".txt", "")
-                        rules[rule_name] = clean_text_for_telegram(f.read())
-                        print(f"✅ تم تحميل قاعدة: {rule_name}")
+                        # إزالة أي رموز غير مرغوب فيها من البداية
+                        content = content.lstrip('\ufeff')  # إزالة BOM
+                        content = content.lstrip()
+                        rules[rule_name] = clean_text_for_telegram(content)
+                        print(f"✅ تم تحميل {rule_name} - {len(content)} حرف")
+                    else:
+                        print(f"❌ فشل في قراءة {file}")
+                        
                 except Exception as e:
                     print(f"⚠️ خطأ في {file}: {e}")
     
-    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
-
 # ==================== تحميل الاختبارات ====================
 TESTS_BY_LEVEL = {
     "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
