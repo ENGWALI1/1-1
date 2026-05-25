@@ -963,7 +963,31 @@ def webhook():
             send_message(chat_id, "اختر من القائمة 👇", keyboard)
     
     return "OK"
+    @app.route('/check_page/<page_num>')
+def check_page(page_num):
+    if not is_subscribed(ADMIN_ID):
+        return "غير مصرح", 403
+    
+    if page_num in STUDENT_PAGES:
+        page = STUDENT_PAGES[page_num]
+        exercises = page.get("exercises", [])
+        
+        result = f"📄 **صفحة {page_num}**\n"
+        result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
+        result += f"🔢 عدد التمارين: {len(exercises)}\n"
+        if exercises:
+            result += f"\n📌 أول تمرين:\n"
+            first = exercises[0]
+            if isinstance(first, dict):
+                result += f"   المفاتيح: {list(first.keys())}\n"
+                result += f"   المحتوى: {str(first)[:200]}"
+            else:
+                result += f"   المحتوى: {str(first)[:200]}"
+        return result, 200
+    
+    return f"❌ الصفحة {page_num} غير موجودة", 404
 
+# ==================== التشغيل ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
