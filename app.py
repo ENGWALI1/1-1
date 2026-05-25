@@ -372,7 +372,7 @@ def format_text(content):
     return content[:4000]
 
 def format_translation(page_data):
-    """تنسيق الترجمة (يدعم القواميس والقوائم)"""
+    """تنسيق الترجمة (يدعم القواميس والقوائم والمفاتيح المختلفة)"""
     
     # إذا كانت page_data قائمة (list)
     if isinstance(page_data, list):
@@ -387,6 +387,30 @@ def format_translation(page_data):
             else:
                 result += f"{item}\n\n"
         return result if result else "⚠️ لا توجد ترجمة لهذه الصفحة"
+    
+    # إذا كانت page_data قاموساً (dict)
+    if isinstance(page_data, dict):
+        # محاولة 1: content_line_by_line
+        lines = page_data.get('content_line_by_line', [])
+        if lines:
+            result = ""
+            for item in lines:
+                en = item.get('en', '')
+                ar = item.get('ar', '')
+                result += f"📖 **{en}**\n🌐 {ar}\n\n"
+            return result
+        
+        # محاولة 2: translation (نص كامل)
+        translation = page_data.get('translation', '')
+        if translation:
+            return translation
+        
+        # محاولة 3: أي مفتاح آخر يحتوي على ترجمة
+        for key in ['ar_text', 'arabic', 'ar', 'translated_text']:
+            if key in page_data and page_data[key]:
+                return page_data[key]
+    
+    return "⚠️ لا توجد ترجمة لهذه الصفحة"
     
     # إذا كانت page_data قاموساً (dict)
     if isinstance(page_data, dict):
