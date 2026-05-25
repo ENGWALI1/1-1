@@ -1,0 +1,441 @@
+📘 *Reported Questions — الأسئلة المنقولة (الكلام غير المباشر)*
+✨ *شرح كامل ومفصل 100%*
+
+━━━━━━━━━━━━━━━━━━
+
+🎯 *أولاً: ما هي Reported Speech؟*
+
+الكلام المنقول *(Reported Speech)* هو عندما ننقل كلام شخص آخر بطريقة غير مباشرة، بدون استخدام علامات الاقتباس.
+
+📌 *Direct Speech (مباشر):*
+He said, "I am tired."
+
+📌 *Reported Speech (غير مباشر):*
+He said that he was tired.
+
+━━━━━━━━━━━━━━━━━━
+
+🟢 *ثانياً: قواعد تحويل الكلام المنقول*
+
+🔹 1️⃣ تغيير الزمن *(Tense change)*
+📌 نرجع الزمن خطوة للوراء
+
+🔹 2️⃣ تغيير الضمائر *(Pronoun change)*
+
+🔹 3️⃣ تغيير كلمات الزمان والمكان
+
+🔹 4️⃣ إضافة "that" *(اختياري)*
+
+━━━━━━━━━━━━━━━━━━
+
+📊 *ثالثاً: تغيير الأزمنة (Tense Changes)*
+
+🔹 *Present Simple → Past Simple*
+
+"I work hard."
+✅ He said he worked hard.
+
+━━━━━━━━
+
+🔹 *Present Continuous → Past Continuous*
+
+"I am working."
+✅ He said he was working.
+
+━━━━━━━━
+
+🔹 *Past Simple → Past Perfect*
+
+"I worked hard."
+✅ He said he had worked hard.
+
+━━━━━━━━
+
+🔹 *Past Continuous → Past Perfect Continuous*
+
+"I was working."
+✅ He said he had been working.
+
+━━━━━━━━
+
+🔹 *Present Perfect → Past Perfect*
+
+"I have worked."
+✅ He said he had worked.
+
+━━━━━━━━
+
+🔹 *Past Perfect → Past Perfect* *(لا تغيير)*
+
+"I had worked."
+✅ He said he had worked.
+
+━━━━━━━━
+
+🔹 *Future (will) → would*
+
+"I will work."
+✅ He said he would work.
+
+━━━━━━━━
+
+🔹 *can → could*
+
+"I can swim."
+✅ He said he could swim.
+
+━━━━━━━━
+
+🔹 *may → might*
+
+"I may come."
+✅ He said he might come.
+
+━━━━━━━━
+
+🔹 *must → had to*
+
+"I must go."
+✅ He said he had to go.
+
+━━━━━━━━━━━━━━━━━━
+
+🔄 *رابعاً: تغيير الضمائر (Pronoun Changes)*
+
+🔹 I → he / she
+
+🔹 you → I / he / she / they
+
+🔹 we → they
+
+🔹 my → his / her
+
+🔹 your → my / his / her / their
+
+🔹 our → their
+
+━━━━━━━━━━━━━━━━━━
+
+📅 *خامساً: تغيير كلمات الزمان والمكان*
+
+🔹 now → then
+
+🔹 today → that day
+
+🔹 tonight → that night
+
+🔹 yesterday → the day before / the previous day
+
+🔹 tomorrow → the next day / the following day
+
+🔹 this week → that week
+
+🔹 last week → the week before / the previous week
+
+🔹 next week → the following week
+
+🔹 here → there
+
+🔹 this → that
+
+🔹 these → those
+
+━━━━━━━━━━━━━━━━━━
+
+❓ *سادساً: Reported Questions (الأسئلة المنقولة)*
+
+📌 هذا هو الجزء الأهم للقاعدة العاشرة.
+
+🔹 نوعان من الأسئلة:
+
+1️⃣ *Yes / No Questions*
+(أسئلة بنعم/لا)
+
+2️⃣ *Wh- Questions*
+(أسئلة بكلمات استفهام)
+
+━━━━━━━━━━━━━━━━━━
+
+📌 *1. Yes / No Questions (أسئلة بنعم/لا)*
+
+نستخدم *if* أو *whether* لربط السؤال.
+
+✅ "Do you like coffee?"
+→ He asked if I liked coffee.
+
+✅ "Are you happy?"
+→ She asked if I was happy.
+
+✅ "Have you seen the movie?"
+→ He asked if I had seen the movie.
+
+✅ "Will you come tomorrow?"
+→ She asked if I would come the next day.
+
+✅ "Can you help me?"
+→ He asked if I could help him.
+
+━━━━━━━━━━━━━━━━━━
+
+📌 *2. Wh- Questions (أسئلة بكلمات استفهام)*
+
+نحتفظ بكلمة الاستفهام
+*(what, where, when, why, who, how)*
+ونغير بقية الجملة.
+
+✅ "Where do you live?"
+→ He asked where I lived.
+
+✅ "What are you doing?"
+→ She asked what I was doing.
+
+✅ "When did you arrive?"
+→ He asked when I had arrived.
+
+✅ "Why are you sad?"
+→ She asked why I was sad.
+
+✅ "Who is that man?"
+→ He asked who that man was.
+
+✅ "How old are you?"
+→ She asked how old I was.
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ *مهم جداً:*
+
+في الأسئلة المنقولة، نغير ترتيب الكلمات إلى ترتيب الجملة الخبرية:
+
+`Subject + Verb`
+
+❌ لا نستخدم علامة الاستفهام.
+
+📌 *مقارنة:*
+
+Direct:
+Where *do you* live?
+*(do you = inversion)*
+
+Reported:
+He asked where *I lived*.
+*(I lived = normal order)*
+
+━━━━━━━━━━━━━━━━━━
+
+📝 *سابعاً: أمثلة إضافية على Reported Questions*
+
+✅ "Are you a student?"
+→ He asked if I was a student.
+
+━━━━━━━━
+
+✅ "What time does the train leave?"
+→ He asked what time the train left.
+
+━━━━━━━━
+
+✅ "Did you call your mother?"
+→ She asked if I had called my mother.
+
+━━━━━━━━
+
+✅ "Where have you been?"
+→ He asked where I had been.
+
+━━━━━━━━
+
+✅ "Will you marry me?"
+→ He asked if I would marry him.
+
+━━━━━━━━
+
+✅ "How much does this cost?"
+→ She asked how much that cost.
+
+━━━━━━━━
+
+✅ "Why didn't you tell me?"
+→ He asked why I hadn't told him.
+
+━━━━━━━━━━━━━━━━━━
+
+🔄 *ثامناً: أمثلة على تغيير الأزمنة مع الأسئلة*
+
+🔹 "Do you work?" *(Present Simple)*
+✅ He asked if I worked.
+*(Past Simple)*
+
+━━━━━━━━
+
+🔹 "Are you working?" *(Present Continuous)*
+✅ He asked if I was working.
+*(Past Continuous)*
+
+━━━━━━━━
+
+🔹 "Did you work?" *(Past Simple)*
+✅ He asked if I had worked.
+*(Past Perfect)*
+
+━━━━━━━━
+
+🔹 "Have you worked?" *(Present Perfect)*
+✅ He asked if I had worked.
+*(Past Perfect)*
+
+━━━━━━━━
+
+🔹 "Will you work?" *(Future)*
+✅ He asked if I would work.
+*(would)*
+
+━━━━━━━━
+
+🔹 "Can you work?" *(Modal)*
+✅ He asked if I could work.
+*(could)*
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ *تاسعاً: أخطاء شائعة في Reported Questions*
+
+1️⃣ عدم تغيير ترتيب الكلمات:
+
+❌ He asked where *did I live*.
+✅ He asked where *I lived*.
+
+━━━━━━━━
+
+2️⃣ نسيان استخدام if مع أسئلة Yes / No:
+
+❌ He asked *I liked coffee*.
+✅ He asked *if* I liked coffee.
+
+━━━━━━━━
+
+3️⃣ عدم تغيير الزمن:
+
+❌ He asked where *do you live*.
+✅ He asked where *I lived*.
+
+━━━━━━━━
+
+4️⃣ استخدام "said" بدل "asked" في الأسئلة:
+
+❌ He said where I lived.
+✅ He *asked* where I lived.
+
+━━━━━━━━
+
+5️⃣ نسيان تغيير الضمائر:
+
+❌ He asked if *you* liked coffee.
+*(إذا كانت الجملة عن الشخص نفسه)*
+
+✅ He asked if *he* liked coffee.
+
+━━━━━━━━━━━━━━━━━━
+
+📝 *عاشراً: تمارين تدريبية*
+
+📌 *التمرين 1: حوّل الأسئلة التالية إلى Reported Questions*
+
+1. "Do you like pizza?"
+   → He asked me ______
+
+2. "Where do you live?"
+   → She asked me ______
+
+3. "Are you coming to the party?"
+   → He asked her ______
+
+4. "What time is it?"
+   → She asked ______
+
+5. "Have you finished your homework?"
+   → He asked ______
+
+━━━━━━━━
+
+📌 *التمرين 2: حوّل الأسئلة التالية (مع أزمنة مختلفة)*
+
+1. "Did you see the movie?"
+   → She asked ______
+
+2. "Will you help me?"
+   → He asked ______
+
+3. "Why are you crying?"
+   → She asked ______
+
+4. "Can you drive?"
+   → He asked ______
+
+5. "Where were you yesterday?"
+   → She asked ______
+
+━━━━━━━━
+
+📌 *التمرين 3: صحح الأخطاء في الجمل التالية*
+
+1. He asked where did she live.
+
+2. She asked if I am happy.
+
+3. He asked what is your name.
+
+4. She asked me you like coffee.
+
+5. He said where I lived.
+
+━━━━━━━━━━━━━━━━━━
+
+✅ *حادي عشر: الخلاصة النهائية*
+
+🔑 نستخدم *asked* بدلاً من *said*.
+
+🔑 ترتيب الكلمات يصبح مثل الجملة الخبرية:
+
+`Subject + Verb`
+
+🔑 أسئلة Yes / No نضيف:
+`if / whether`
+
+🔑 Wh- Questions نحتفظ بكلمة الاستفهام.
+
+🔑 نرجع الزمن خطوة للوراء:
+`Present → Past`
+`Will → Would`
+
+🔑 نغير الضمائر حسب السياق.
+
+🔑 نحذف علامة الاستفهام.
+
+━━━━━━━━━━━━━━━━━━
+
+💡 *الجمل التي تخلّصلك كل شيء:*
+
+📌 Direct:
+"Where do you live?"
+
+📌 Reported:
+He asked where *I lived*.
+
+━━━━━━━━
+
+📌 Direct:
+"Do you like coffee?"
+
+📌 Reported:
+He asked *if* I liked coffee.
+
+━━━━━━━━
+
+📌 Direct:
+"Will you come tomorrow?"
+
+📌 Reported:
+She asked if I *would* come the next day.
+
+━━━━━━━━━━━━━━━━━━

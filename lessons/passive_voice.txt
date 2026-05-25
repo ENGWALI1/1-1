@@ -1,0 +1,271 @@
+📘 Passive Voice - المبني للمجهول
+شرح كامل ومفصل 100%
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 أولاً: ما هو Passive Voice؟
+
+المبني للمجهول هو قاعدة نحوية تستخدم عندما يكون **التركيز على الحدث نفسه** أو **المفعول به**، وليس على من قام بالفعل (الفاعل).
+
+المقارنة بين Active و Passive:
+
+Active (معلوم):                    Passive (مجهول):
+Subject (فاعل) + verb + object     Object + be + past participle + (by + subject)
+Sabra ate the chocolates.          The chocolates were eaten by Sabra.
+(التركيز على سابرا)                (التركيز على الشوكولاتة)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🟢 ثانياً: لماذا نستخدم Passive Voice؟
+
+┌─────────────────────────────────────────────────────────────────┐
+│ السبب                          │ مثال                           │
+├───────────────────────────────┼─────────────────────────────────┤
+│ 1️⃣ عندما لا نعرف الفاعل       │ My chocolates were eaten.       │
+│                               │ (لا أعرف من أكلها)              │
+│                               │ A 25-year-old woman was         │
+│                               │ murdered last night.            │
+│                               │ (لا نعرف القاتل)                │
+├───────────────────────────────┼─────────────────────────────────┤
+│ 2️⃣ عندما الفاعل واضح وليس     │ 10 men were arrested.           │
+│    مهماً                      │ (واضح أن الشرطة هي التي ألقت    │
+│                               │ القبض)                          │
+├───────────────────────────────┼─────────────────────────────────┤
+│ 3️⃣ في الكتابة الأكاديمية      │ It has been brought to my       │
+│    والرسمية (لأنها أكثر       │ attention...                    │
+│    احترافية وغير شخصية)       │ It could be suggested that...    │
+├───────────────────────────────┼─────────────────────────────────┤
+│ 4️⃣ لوصف العمليات              │ The bottles are then filled     │
+│                               │ with Cola.                      │
+│                               │ (عملية تصنيع الكولا)            │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏗️ ثالثاً: بنية الجملة في Passive Voice
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Active:     الفاعل + الفعل + المفعول به                         │
+│ Passive:    المفعول به + (be) + past participle + (by + الفاعل)│
+└─────────────────────────────────────────────────────────────────┘
+
+مثال:
+Active:  Sabra **eats** the chocolates.
+         (الفاعل) (فعل)   (مفعول به)
+
+Passive: The chocolates **are eaten** by Sabra.
+         (مفعول به أصبح فاعلاً) (be + past participle) (by + الفاعل)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 رابعاً: تحويل الأزمنة من Active إلى Passive
+
+┌─────────────────────────────────────────────────────────────────┐
+│ الزمن              │ Active                      │ Passive       │
+├────────────────────┼─────────────────────────────┼───────────────┤
+│ Present Simple     │ Sabra eats the chocolates.  │ are eaten     │
+│ Past Simple        │ Sabra ate the chocolates.   │ were eaten    │
+│ Present Continuous │ Sabra is eating the         │ are being     │
+│                    │ chocolates.                 │ eaten         │
+│ Past Continuous    │ Sabra was eating the        │ were being    │
+│                    │ chocolates.                 │ eaten         │
+│ Present Perfect    │ Sabra has eaten the         │ have been     │
+│                    │ chocolates.                 │ eaten         │
+│ Past Perfect       │ Sabra had eaten the         │ had been      │
+│                    │ chocolates.                 │ eaten         │
+│ Future (will)      │ Sabra will eat the          │ will be eaten │
+│                    │ chocolates.                 │               │
+│ be going to        │ Sabra is going to eat the   │ are going to  │
+│                    │ chocolates.                 │ be eaten      │
+│ Future Perfect     │ Sabra will have eaten the   │ will have     │
+│                    │ chocolates.                 │ been eaten    │
+│ Modals (can, must, │ Sabra can eat the           │ can be eaten  │
+│ should, may)       │ chocolates.                 │               │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ خامساً: أزمنة لا تستخدم مع Passive Voice
+
+لا نستخدم Passive Voice مع:
+- Present Perfect Continuous (has been being)
+- Past Perfect Continuous (had been being)
+
+لأن النتيجة تبدو غريبة جداً:
+
+❌ The money has been being counted. (غير طبيعي)
+✅ The money is being counted. (أفضل)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+✏️ سادساً: 6 خطوات لتحويل Active إلى Passive
+
+┌─────────────────────────────────────────────────────────────────┐
+│ الخطوة 1: حدد الفاعل، الفعل، والمفعول به في الجملة             │
+│ الخطوة 2: انقل المفعول به إلى أول الجملة ليكون الفاعل الجديد   │
+│ الخطوة 3: حدد زمن الفعل في الجملة الأصلية                      │
+│ الخطوة 4: صغ فعل to be بنفس الزمن وتوافق مع الفاعل الجديد      │
+│ الخطوة 5: أضف past participle (التصريف الثالث) للفعل الأصلي    │
+│ الخطوة 6: أضف الفاعل الأصلي في النهاية بعد "by" (اختياري)     │
+└─────────────────────────────────────────────────────────────────┘
+
+مثال تطبيقي:
+الجملة: Sabra ate the chocolates.
+
+1. الفاعل: Sabra, الفعل: ate, المفعول به: the chocolates
+2. The chocolates → إلى أول الجملة
+3. ate = Past Simple
+4. were (past simple of be مع chocolates جمع)
+5. eaten (past participle of eat)
+6. by Sabra
+
+النتيجة: The chocolates were eaten by Sabra.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 سابعاً: تحويل الضمائر عند استخدام by
+
+عندما نضيف الفاعل الأصلي بعد by، نحوله إلى **ضمير مفعول به (Object Pronoun)**:
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Subject Pronoun (فاعل)  │ Object Pronoun (مفعول به)            │
+├─────────────────────────┼───────────────────────────────────────┤
+│ I                       │ me                                    │
+│ You                     │ you                                   │
+│ He                      │ him                                   │
+│ She                     │ her                                   │
+│ It                      │ it                                    │
+│ We                      │ us                                    │
+│ They                    │ them                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+مثال:
+Active: She ate the chocolates.
+Passive: The chocolates were eaten **by her**. (وليس by she)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 ثامناً: أمثلة على تحويل جميع الأزمنة
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Active                                    │ Passive             │
+├───────────────────────────────────────────┼─────────────────────┤
+│ Builders built a big ban in 1843.         │ A big ban was built │
+│                                           │ in 1843.            │
+│ Scientists will discover a cure.          │ A cure will be      │
+│                                           │ discovered.         │
+│ Someone has found a World War 2 bomb.     │ A World War 2 bomb  │
+│                                           │ has been found.     │
+│ The police arrested Sabra.                │ Sabra was arrested. │
+│ Leila is going to kill Sabra.             │ Sabra is going to   │
+│                                           │ be killed.          │
+│ People speak English all over the world.  │ English is spoken   │
+│                                           │ all over the world. │
+│ They are building a new hospital.         │ A new hospital is   │
+│                                           │ being built.        │
+│ Someone stole my phone.                   │ My phone was stolen.│
+│ They will announce the results tomorrow.  │ The results will be │
+│                                           │ announced tomorrow. │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💬 تاسعاً: الجمل الشهيرة التي تستخدم Passive Voice
+
+هناك بعض الجمل التي نستخدم فيها Passive Voice بشكل شائع جداً:
+
+| الجملة | الترجمة |
+|--------|---------|
+| I was born in 1990. | ولدت في عام 1990. |
+| He is called Simon. | اسمه سايمون. |
+| The book was written by Hemingway. | الكتاب كُتب بواسطة همنغواي. |
+| The decision was made yesterday. | القرار اتخذ أمس. |
+| It is said that... | يُقال أن... |
+| It is believed that... | يُعتقد أن... |
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ عاشراً: أخطاء شائعة وتصحيحها
+
+1️⃣ استخدام past simple بدل past participle:
+❌ The chocolates were **ate**.
+✅ The chocolates were **eaten**.
+
+2️⃣ نسيان فعل to be:
+❌ The letter written by Ahmed.
+✅ The letter **was** written by Ahmed.
+
+3️⃣ استخدام الفاعل بدل المفعول به بعد by:
+❌ The chocolates were eaten by **she**.
+✅ The chocolates were eaten by **her**.
+
+4️⃣ خطأ في تطابق الفعل to be مع الفاعل الجديد:
+❌ The chocolates **was** eaten.
+✅ The chocolates **were** eaten.
+
+5️⃣ استخدام Passive دون داعٍ:
+❌ The ball was kicked by me. (الأفضل: I kicked the ball)
+✅ استخدم Passive فقط عند الحاجة.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 حادي عشر: تمارين تدريبية
+
+التمرين 1: حوّل إلى Passive Voice
+
+1. Builders built a big ban in 1843.
+2. Scientists will discover a cure for the common cold.
+3. Someone has found a World War 2 bomb.
+4. The police arrested Sabra.
+5. Leila is going to kill Sabra.
+6. People speak English all over the world.
+7. They are building a new hospital.
+8. Someone stole my phone.
+9. They will announce the results tomorrow.
+10. She wrote a beautiful poem.
+
+التمرين 2: اختر الإجابة الصحيحة
+
+1. The letter (wrote / was written) by my brother.
+2. The cakes (are eaten / are being eaten) right now.
+3. The report (has finished / has been finished) already.
+4. A new bridge (is building / is being built) over the river.
+5. The thieves (arrested / were arrested) last night.
+
+التمرين 3: صحح الخطأ في الجمل التالية
+
+1. The chocolates was eaten.
+2. The letter written by Ahmed.
+3. The cake is ate by the children.
+4. The movie was see by millions of people.
+5. The work will be finish tomorrow.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ ثاني عشر: الخلاصة النهائية
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔑 النقاط الأساسية التي يجب تذكرها:                            │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Passive Voice = التركيز على الحدث وليس الفاعل               │
+│ 2. الصيغة: object + (be) + past participle + (by + subject)   │
+│ 3. نستخدمه عندما: لا نعرف الفاعل، الفاعل واضح، في الكتابة     │
+│    الأكاديمية، لوصف العمليات                                    │
+│ 4. بعد by نستخدم Object Pronoun (me, him, her, us, them)       │
+│ 5. الفعل to be يجب أن يتوافق مع الفاعل الجديد في العدد         │
+│ 6. past participle هو التصريف الثالث للفعل                     │
+│ 7. لا نستخدم Present Perfect Continuous و Past Perfect         │
+│    Continuous مع Passive                                        │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 الجمل التي تخلّصلك كل شيء:
+
+• I was born in 1990. (ولدت في 1990)
+• English is spoken all over the world. (الإنجليزية تُتحدث في جميع أنحاء العالم)
+• The email was sent yesterday. (الإيميل أُرسل أمس)
+• The house is being painted now. (المنزل يتم طلاؤه الآن)
+• The decision has been made. (القرار اتخذ)
+
+━━━━━━━━━━━━━━━━━━━━━━━━

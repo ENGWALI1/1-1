@@ -1,0 +1,293 @@
+📘 Past Perfect Tense - الماضي التام
+شرح كامل ومفصل 100%
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 أولاً: ما هو الماضي التام؟
+
+الماضي التام يُسمى أحياناً "ماضي الماضي" (the past of the past).
+
+الفكرة الأساسية: عندما نتحدث عن حدثين أو أكثر وقعوا في الماضي، ونريد أن نُظهر أيّهم حدث **أولاً**، نستخدم الماضي التام للحدث الذي وقع أولاً.
+
+المقارنة:
+
+جملتين منفصلتين (Past Simple):           جملة واحدة (مع Past Perfect):
+The meeting started at 9:00.             When we arrived at 10:00, the meeting **had started**.
+We arrived at 10:00.                     (عندما وصلنا الساعة 10، كان الاجتماع قد بدأ)
+
+الحدث الأول (9:00) → Past Perfect (had started)
+الحدث الثاني (10:00) → Past Simple (arrived)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🟢 ثانياً: متى نستخدم الماضي التام؟
+
+1️⃣ للتعبير عن حدثين في الماضي، نُظهر أيّهم حدث أولاً
+
+Before the guests arrived, we **had cleaned** the house.
+(قبل وصول الضيوف، كنا قد نظفنا المنزل)
+
+When the president came to power, the economy **had improved**.
+(عندما وصل الرئيس إلى السلطة، كان الاقتصاد قد تحسن)
+
+2️⃣ في جمل تحتوي على كلمات مثل: before, after, by the time, when
+
+By the time Maria moved to Canada, she **had graduated** from university.
+(بحلول الوقت الذي انتقلت فيه ماريا إلى كندا، كانت قد تخرجت من الجامعة)
+
+3️⃣ عندما يكون الحدث الأول مفهوماً من السياق
+
+Someone asked: "What was the situation when the president came to power?"
+You answer: "The economy **had improved**, the currency **had strengthened**..."
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏗️ ثالثاً: كيف نكون الجملة؟
+
+┌─────────────────────────────────────────────────────────────────┐
+│              الصيغة العامة                                      │
+│           الفاعل + had + past participle (V3)                   │
+└─────────────────────────────────────────────────────────────────┘
+
+✅ المثبت (Positive)
+
+I had worked.    You had worked.    We had worked.
+They had worked. He had worked.      She had worked.
+It had worked.
+
+❌ المنفي (Negative)
+
+I had not worked.    You had not worked.    He had not worked.
+She had not worked.  We had not worked.     They had not worked.
+
+الاختصارات:
+I hadn't worked, You hadn't worked, He hadn't worked...
+
+❓ السؤال (Question)
+
+Had I worked?    Had you worked?    Had he worked?
+Had she worked?  Had we worked?     Had they worked?
+
+❓ سؤال بكلمة استفهام:
+Where **had** you worked before you joined this company?
+Who **had** you worked with?
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ رابعاً: حالة خاصة - الفعل "to have" نفسه
+
+عندما يكون الفعل الأساسي هو "have"، نصبح عندنا "had had":
+
+I **had had** breakfast before I left home.
+(كنت قد تناولت الفطور قبل أن أغادر المنزل)
+
+نفي: I hadn't had breakfast when I left home.
+سؤال: Had you had breakfast when you left home?
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 خامساً: الكلمات المفتاحية مع Past Perfect
+
+┌─────────────────────────────────────────────────────────────────┐
+│ الكلمة      │ المعنى         │ مثال                             │
+├─────────────┼────────────────┼───────────────────────────────────┤
+│ already     │ بالفعل         │ Before we moved, we had already  │
+│             │                │ sold the house.                  │
+│ yet         │ حتى ذلك الوقت  │ When she arrived, she hadn't     │
+│             │                │ heard the news yet.              │
+│ for         │ لمدة (فترة)    │ I had been a salesperson for 5   │
+│             │                │ years.                           │
+│ since       │ منذ (نقطة بدء) │ He had lived in New York since   │
+│             │                │ 2018.                            │
+│ never       │ أبداً          │ They had never seen snow before. │
+│ ever        │ في حياته       │ Had they ever seen snow before?  │
+│ just        │ للتو           │ We had just had lunch when our   │
+│             │                │ friends dropped in.              │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔤 سادساً: الفرق بين for و since
+
+for + مدة زمنية (period of time):
+- for five years, for two hours, for a long time, for ages
+
+since + نقطة بداية (point in time):
+- since 2018, since January, since I was a child
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💬 سابعاً: الاختصارات (Contractions)
+
+المثبت:
+I had  → I'd      You had → You'd    We had → We'd
+They had → They'd  He had → He'd      She had → She'd
+
+⚠️ انتبه: I'd يمكن أن تعني:
+- I had (في Past Perfect) → I'd worked.
+- I would (في Conditional) → I'd love to help.
+
+الطريقة للتفريق: من الكلمة التي تليها
+- I'd + past participle (worked, gone, seen) → I had
+- I'd + مصدر الفعل (work, go, see) → I would
+
+النفي:
+I had not → I hadn't    You had not → You hadn't
+He had not → He hadn't   She had not → She hadn't
+We had not → We hadn't   They had not → They hadn't
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💬 ثامناً: الإجابات المختصرة (Short Answers)
+
+السؤال:                      ✅ إيجابي:        ❌ سلبي:
+Had she finished the report?  Yes, she had.    No, she hadn't.
+Had they informed their clients? Yes, they had. No, they hadn't.
+Had it happened before?       Yes, it had.     No, it hadn't.
+
+🔔 قاعدة مهمة:
+- في الإجابة الإيجابية، لا نستخدم الاختصار ❌ (لا نقول Yes, she'd)
+- في الإجابة السلبية، نستخدم الاختصار ✅ (No, she hadn't)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+✏️ تاسعاً: الأفعال المنتظمة (Regular Verbs)
+
+مع الأفعال المنتظمة، past participle = الفعل + ed
+
+│ القاعدة                     │ مثال                           │
+├─────────────────────────────┼─────────────────────────────────┤
+│ معظم الأفعال + ed           │ talk → talked, watch → watched │
+│ تنتهي بـ e + d              │ live → lived, love → loved     │
+│ حرف ساكن + y → ied          │ cry → cried, study → studied   │
+│ C+V+C (ضعف الحرف الأخير)   │ stop → stopped, plan → planned │
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ عاشراً: الأفعال غير المنتظمة (Irregular Verbs)
+
+│ الفعل    │ past participle │ المثال الماضي التام              │
+├──────────┼─────────────────┼──────────────────────────────────┤
+│ be       │ been            │ I had been there before.         │
+│ have     │ had             │ I had had breakfast.             │
+│ go       │ gone            │ They had gone home.              │
+│ make     │ made            │ She had made a cake.             │
+│ know     │ known           │ I had known him for years.       │
+│ think    │ thought         │ I had thought about it.          │
+│ buy      │ bought          │ He had bought a car.             │
+│ sell     │ sold            │ They had sold their house.       │
+│ write    │ written         │ She had written a letter.        │
+│ read     │ read (تنطق "red")│ I had read that book.           │
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ حادي عشر: أخطاء شائعة وتصحيحها
+
+1️⃣ استخدام past simple بدل past participle:
+❌ We had went to the mall.
+✅ We had gone to the mall.
+
+2️⃣ خطأ إملائي (نسيان مضاعفة الحرف):
+❌ Who had planed the party?
+✅ Who had planned the party?
+
+3️⃣ خطأ في اختصار النفي:
+❌ They had'nt been there before.
+✅ They hadn't been there before.
+
+4️⃣ إجابة مختصرة خاطئة:
+❌ Had you seen that movie before? → Yes, I seen.
+✅ Had you seen that movie before? → Yes, I had.
+
+5️⃣ إجابة مختصرة باستخدام زمن خاطئ:
+❌ Had you seen that movie before? → No, I didn't.
+✅ Had you seen that movie before? → No, I hadn't.
+
+6️⃣ عدم استخدام past perfect عندما يجب:
+❌ When we arrived, he went out already.
+✅ When we arrived, he had already gone out.
+
+7️⃣ نسيان had:
+❌ She been to Paris before.
+✅ She had been to Paris before.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 ثاني عشر: مقارنة الأزمنة الماضية
+
+┌─────────────────────────────────────────────────────────────────┐
+│ الزمن           │ الاستخدام                                     │
+├─────────────────┼────────────────────────────────────────────────┤
+│ Past Simple     │ The meeting started at 9:00.                  │
+│                 │ (حدث انتهى في الماضي)                         │
+├─────────────────┼────────────────────────────────────────────────┤
+│ Past Continuous │ I was sleeping when the phone rang.           │
+│                 │ (حدث مستمر قطعه آخر)                          │
+├─────────────────┼────────────────────────────────────────────────┤
+│ Present Perfect │ I have lost my keys. (ما زالت مفقودة)         │
+│                 │ (يربط الماضي بالحاضر)                         │
+├─────────────────┼────────────────────────────────────────────────┤
+│ Past Perfect    │ When we arrived, the meeting had started.     │
+│                 │ (حدثان في الماضي، نُظهر أيّهم حدث أولاً)       │
+└─────────────────┴────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 ثالث عشر: تمارين تدريبية
+
+التمرين 1: حوّل الجمل إلى Past Perfect
+
+1. Before the plane took off, the passengers (find) their seats.
+2. By the time we got home, the ice cream (melt).
+3. It (stop) snowing before we landed.
+4. Before the babysitter arrived, the kids (go) to bed.
+
+التمرين 2: أكمل بالزمن الصحيح (Past Simple أو Past Perfect)
+
+1. When I arrived at the station, the train ______ (already / leave).
+2. She ______ (never / see) such a beautiful sunset before.
+3. They ______ (finish) their homework before they went out.
+4. He ______ (live) in London for five years before he moved to Paris.
+5. By the time we reached the cinema, the movie ______ (start).
+
+التمرين 3: صحح الخطأ في الجمل التالية
+
+1. When we arrived, he went out already.
+2. She had went to the supermarket.
+3. Had you ever been to London before? → Yes, I'd.
+4. They hadn't never seen snow.
+5. I had be there before.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ رابع عشر: الخلاصة النهائية
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔑 النقاط الأساسية التي يجب تذكرها:                            │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Past perfect = حدثان في الماضي، نُظهر أيّهم حدث أولاً       │
+│ 2. الصيغة: had + past participle (V3)                          │
+│ 3. الحدث الأول → Past Perfect, الحدث الثاني → Past Simple      │
+│ 4. الكلمات المفتاحية: already, yet, for, since, never, ever   │
+│ 5. اختصار I had → I'd (انتبه لا تخلط مع I would)              │
+│ 6. الإجابة المختصرة الموجبة: Yes, I had (بدون اختصار)         │
+│ 7. الأفعال المنتظمة + ed، الأفعال غير المنتظمة لها V3 خاص    │
+└─────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 الجمل التي تخلّصلك كل شيء:
+
+• When we arrived, the meeting **had already started**.
+  (عندما وصلنا، كان الاجتماع قد بدأ بالفعل)
+
+• She **had never seen** snow before she visited Canada.
+  (لم تكن قد رأت الثلج من قبل قبل أن تزور كندا)
+
+• By the time I woke up, my brother **had already left**.
+  (بحلول الوقت الذي استيقظت فيه، كان أخي قد غادر بالفعل)
+
+• I **had had** breakfast before I went to work.
+  (كنت قد تناولت الفطور قبل أن أذهب إلى العمل)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
