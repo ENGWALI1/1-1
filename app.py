@@ -371,13 +371,30 @@ def format_text(content):
     content = content.replace("Writing", "\n✏️ **Writing**\n")
     return content[:4000]
 
-def format_translation(lines):
-    if not lines:
-        return "لا توجد ترجمة"
-    result = ""
-    for item in lines:
-        result += f"📖 **{item.get('en', '')}**\n🌐 {item.get('ar', '')}\n\n"
-    return result
+def format_translation(page_data):
+    """تنسيق الترجمة (يدعم صيغ متعددة)"""
+    
+    # محاولة 1: content_line_by_line
+    lines = page_data.get('content_line_by_line', [])
+    if lines:
+        result = ""
+        for item in lines:
+            en = item.get('en', '')
+            ar = item.get('ar', '')
+            result += f"📖 **{en}**\n🌐 {ar}\n\n"
+        return result
+    
+    # محاولة 2: translation (نص كامل)
+    translation = page_data.get('translation', '')
+    if translation:
+        return translation
+    
+    # محاولة 3: أي مفتاح آخر يحتوي على ترجمة
+    for key in ['ar_text', 'arabic', 'ar', 'translated_text']:
+        if key in page_data and page_data[key]:
+            return page_data[key]
+    
+    return "⚠️ لا توجد ترجمة لهذه الصفحة"
 
 def format_exercises(exercises):
     if not exercises:
