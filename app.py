@@ -27,7 +27,7 @@ SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 GITHUB_TOKEN = os.environ.get('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')
-GITHUB_REPO = os.environ.get('withali91_bot')  # غير هذا إلى اسم_المستخدم/اسم_المستودع
+GITHUB_REPO = os.environ.get('withali91_bot')  
 GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
