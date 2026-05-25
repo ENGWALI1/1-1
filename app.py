@@ -22,12 +22,14 @@ if not TOKEN:
     exit(1)
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
-ADMIN_ID = 1662780469
+ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
-FREE_REQUESTS = 10 
+FREE_REQUESTS = 10
+
+# إعدادات GitHub
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')  
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')
 GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
@@ -36,6 +38,8 @@ VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
 user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
+
+print(f"👑 تم تعيين المسؤول: {ADMIN_ID}")
 
 # ==================== دوال GitHub ====================
 
@@ -773,6 +777,7 @@ print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"📚 القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"📝 الاختبارات: {len(TESTS)} اختبار")
 print(f"👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
+print(f"👑 معرف المسؤول: {ADMIN_ID}")
 print("="*60)
 print("✅ البوت جاهز للعمل!")
 print("="*60)
@@ -794,6 +799,8 @@ def webhook():
         chat_id = cb['message']['chat']['id']
         msg_id = cb['message']['message_id']
         user_id = cb['from']['id']
+        
+        print(f"📨 Callback مستلم: {cb_data} من المستخدم {user_id}")
         
         if cb_data.startswith("test_ans_"):
             parts = cb_data.split("_")
@@ -893,7 +900,18 @@ def webhook():
         
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
+            print(f"🔔 محاولة قبول الطلب: {invoice_id}")
+            print(f"   المستخدم الحالي: {user_id}")
+            print(f"   المسؤول المفترض: {ADMIN_ID}")
+            
+            if user_id != ADMIN_ID:
+                print(f"❌ المستخدم {user_id} ليس مسؤولاً!")
+                send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
+                return "OK"
+            
             pending = load_pending()
+            print(f"   الطلبات المعلقة: {list(pending.keys())}")
+            
             if invoice_id in pending:
                 user_id_target = pending[invoice_id]["user_id"]
                 expiry_date = (datetime.now() + timedelta(days=30)).isoformat()
@@ -902,16 +920,29 @@ def webhook():
                 remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
                 send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**")
+                print(f"✅ تم تفعيل اشتراك المستخدم {user_id_target}")
+            else:
+                print(f"❌ الطلب {invoice_id} غير موجود")
+                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود أو تم معالجته مسبقاً")
             return "OK"
         
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
+            print(f"🔔 محاولة رفض الطلب: {invoice_id}")
+            
+            if user_id != ADMIN_ID:
+                send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
+                return "OK"
+            
             pending = load_pending()
             if invoice_id in pending:
                 user_id_target = pending[invoice_id]["user_id"]
                 remove_pending_request(invoice_id)
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
                 send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
+                print(f"✅ تم رفض طلب المستخدم {user_id_target}")
+            else:
+                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود")
             return "OK"
         
         parts = cb_data.split("_")
@@ -968,7 +999,11 @@ def webhook():
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        if text == "📊 رصيدي":
+        # أمر مؤقت لمعرفة معرف المستخدم
+        if text == "/myid":
+            send_message(chat_id, f"🆔 معرفك هو: `{user_id}`\n👑 معرف المسؤول: `{ADMIN_ID}`", parse_mode="Markdown")
+            
+        elif text == "📊 رصيدي":
             show_my_balance(chat_id, user_id)
             
         elif text == '/start' or text == "🏠 الرئيسية":
