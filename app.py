@@ -221,7 +221,6 @@ def get_user_menu(user_id):
 def load_pages_from_zip(zip_path):
     """
     تحميل الصفحات من ملف ZIP مع دعم الترجمة بشكل كامل
-    يدعم ملفات JSON التي تحتوي على مفتاح برقم الصفحة مثل: {"68": {...}}
     """
     pages = {}
     
@@ -249,9 +248,6 @@ def load_pages_from_zip(zip_path):
     
     print(f"📄 عدد ملفات JSON في {os.path.basename(zip_path)}: {len(json_files)}")
     
-    success_count = 0
-    translation_count = 0
-    
     for file_path in json_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -264,13 +260,13 @@ def load_pages_from_zip(zip_path):
             if not page_num:
                 continue
             
-            # البحث عن البيانات الصحيحة (قد تكون داخل مفتاح برقم الصفحة)
+            # البحث عن البيانات الصحيحة
             actual_data = data
             
-            # الحالة 1: البيانات داخل مفتاح يتطابق مع رقم الصفحة
+            # حالة: البيانات داخل مفتاح برقم الصفحة
             if isinstance(data, dict) and page_num in data:
                 actual_data = data[page_num]
-            # الحالة 2: البحث عن أي مفتاح رقمي
+            # حالة: البحث عن أي مفتاح رقمي
             elif isinstance(data, dict):
                 for key, value in data.items():
                     if str(key).isdigit() and isinstance(value, dict):
@@ -281,14 +277,7 @@ def load_pages_from_zip(zip_path):
             if not isinstance(actual_data, dict):
                 continue
             
-            # استخراج المحتوى الأصلي
-            content_original = actual_data.get("content_original", "")
-            if not content_original:
-                content_original = actual_data.get("content", "")
-            if not content_original:
-                content_original = actual_data.get("text", "")
-            
-            # استخراج الترجمة - المفتاح الصحيح هو content_line_by_line
+            # استخراج الترجمة
             translation = actual_data.get("content_line_by_line", [])
             if not translation:
                 translation = actual_data.get("translation", [])
@@ -307,24 +296,13 @@ def load_pages_from_zip(zip_path):
                     elif isinstance(item, str) and item.strip():
                         cleaned_translation.append({"en": "---", "ar": item})
             
-            # استخراج التمارين
-            exercises = actual_data.get("exercises", [])
-            if not exercises:
-                exercises = actual_data.get("solved", [])
-            if not exercises:
-                exercises = actual_data.get("answers", [])
-            
             pages[page_num] = {
                 "title": actual_data.get("title", f"صفحة {page_num}"),
-                "content_original": content_original,
+                "content_original": actual_data.get("content_original", actual_data.get("content", "")),
                 "content_line_by_line": cleaned_translation,
-                "exercises": exercises
+                "exercises": actual_data.get("exercises", actual_data.get("solved", actual_data.get("answers", [])))
             }
             
-            success_count += 1
-            if cleaned_translation:
-                translation_count += 1
-                
         except Exception as e:
             print(f"⚠️ خطأ في تحميل {file_path}: {e}")
     
@@ -334,9 +312,9 @@ def load_pages_from_zip(zip_path):
     except:
         pass
     
-    print(f"   ✅ تم تحميل {success_count} صفحة")
-    print(f"   📝 صفحات مع ترجمة: {translation_count}")
-    print(f"   ⚠️ صفحات بدون ترجمة: {success_count - translation_count}")
+    # إحصائيات
+    pages_with_translation = sum(1 for p in pages.values() if p.get("content_line_by_line"))
+    print(f"   ✅ تم تحميل {len(pages)} صفحة ({pages_with_translation} مع ترجمة)")
     
     return pages
 
@@ -375,7 +353,6 @@ def load_grammar_rules():
                 filename = os.path.basename(file_path)
                 rule_name = filename.replace(".txt", "")
                 rules[rule_name] = clean_text_for_telegram(content)
-                print(f"   ✅ تم تحميل: {rule_name}")
         except Exception as e:
             print(f"⚠️ خطأ في {file_path}: {e}")
     
@@ -458,13 +435,17 @@ def format_text(content):
 
 def format_translation(translation_lines):
     """
-    تنسيق الترجمة للعرض في تلغرام
+    تنسيق الترجمة للعرض في تلغرام مع تقسيم النص الطويل
     """
     if not translation_lines:
-        return "🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"
+        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"]
     
-    result = "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    valid_lines = 0
+    MAX_LENGTH = 3800  # حد آمن أقل من 4096
+    
+    all_parts = []
+    current_part = "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    current_length = len(current_part)
+    part_index = 0
     
     for item in translation_lines:
         if isinstance(item, dict):
@@ -472,19 +453,33 @@ def format_translation(translation_lines):
             ar_text = item.get('ar', '')
             
             if en_text and ar_text:
-                result += f"📖 **{en_text}**\n🌐 {ar_text}\n\n"
-                valid_lines += 1
+                line = f"📖 **{en_text}**\n🌐 {ar_text}\n\n"
             elif ar_text and not en_text:
-                result += f"🌐 {ar_text}\n\n"
-                valid_lines += 1
+                line = f"🌐 {ar_text}\n\n"
             elif en_text and not ar_text:
-                result += f"📖 **{en_text}**\n🌐 *(ترجمة غير متوفرة)*\n\n"
-                valid_lines += 1
+                line = f"📖 **{en_text}**\n🌐 *(ترجمة غير متوفرة)*\n\n"
+            else:
+                continue
+            
+            # إذا تجاوز السطر الحالي الحد، احفظ الجزء الحالي وابدأ جزءاً جديداً
+            if current_length + len(line) > MAX_LENGTH:
+                all_parts.append(current_part)
+                part_index += 1
+                current_part = f"🌐 **الترجمة إلى العربية (الجزء {part_index + 1})**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                current_length = len(current_part)
+            
+            current_part += line
+            current_length += len(line)
     
-    if valid_lines == 0:
-        return "🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"
+    # أضف الجزء الأخير
+    if current_part and current_part != "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n":
+        all_parts.append(current_part)
     
-    return result
+    # إذا لم نجد أي ترجمة صالحة
+    if not all_parts:
+        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"]
+    
+    return len(all_parts), all_parts
 
 def format_exercises(exercises):
     if not exercises:
@@ -776,7 +771,7 @@ def show_my_balance(chat_id, user_id):
 
 # ==================== تحميل جميع البيانات ====================
 print("="*60)
-print("🚀 بدء تشغيل بوت تلغرام - النسخة المحسنة")
+print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
 
 print("\n📚 تحميل كتاب الطالب...")
@@ -791,10 +786,8 @@ GRAMMAR_RULES = load_grammar_rules()
 print("\n📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
-# تهيئة قاعدة البيانات
 init_db()
 
-# إنشاء قوائم الأرقام
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
 
@@ -803,9 +796,8 @@ STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
 ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
 ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
 
-# عرض ملخص
 print("\n" + "="*60)
-print("📊 ملخص التحميل النهائي")
+print("📊 ملخص التحميل")
 print("="*60)
 print(f"📖 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
@@ -974,23 +966,36 @@ def webhook():
                     if not content or content == "لا يوجد محتوى":
                         content = "⚠️ لا يوجد محتوى نصي في هذه الصفحة"
                     mode = "original"
+                    edit_message(chat_id, msg_id, 
+                               f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
+                               get_page_buttons(book_type, page_num, mode, min_page, max_page))
                     
                 elif action == "translated":
                     translation = page.get("content_line_by_line", [])
-                    content = format_translation(translation)
-                    mode = "translated"
+                    num_parts, translation_parts = format_translation(translation)
+                    
+                    if num_parts is None:
+                        # لا توجد ترجمة
+                        edit_message(chat_id, msg_id, 
+                                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
+                                   get_page_buttons(book_type, page_num, "original", min_page, max_page))
+                    else:
+                        # أرسل الأجزاء
+                        mode = "translated"
+                        # أول جزء مع الأزرار
+                        edit_message(chat_id, msg_id, 
+                                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
+                                   get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                        # الأجزاء المتبقية
+                        for part in translation_parts[1:]:
+                            send_message(chat_id, part)
                     
                 elif action == "solved":
                     content = format_exercises(page.get("exercises", []))
                     mode = "solved"
-                    
-                else:
-                    content = format_text(page.get("content_original", ""))
-                    mode = "original"
-                
-                edit_message(chat_id, msg_id, 
-                           f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
-                           get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                    edit_message(chat_id, msg_id, 
+                               f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
+                               get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     if 'message' in data:
