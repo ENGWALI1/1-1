@@ -126,8 +126,13 @@ def remove_pending_request(invoice_id):
     conn.close()
 
 def check_and_deduct_request(user_id):
-    if user_id == ADMIN_ID or is_subscribed(user_id):
+    # المسؤول له وصول غير محدود
+    if user_id == ADMIN_ID:
         return True
+    # المشترك له وصول غير محدود
+    if is_subscribed(user_id):
+        return True
+    # المستخدم المجاني: تحقق من العدد
     used = get_user_usage(user_id)
     if used >= FREE_REQUESTS:
         return False
@@ -214,39 +219,241 @@ def get_user_menu(user_id):
     else:
         return unsubscribed_menu
 
-# ==================== تحميل البيانات ====================
+# ==================== تحميل البيانات المحسن ====================
+def extract_json_data(data, default_title, page_num):
+    """
+    استخراج البيانات من ملف JSON بغض النظر عن هيكله
+    يدعم عدة تنسيقات:
+    1. { "1": { "title": "...", "content_original": "...", "content_line_by_line": [...] } }
+    2. { "title": "...", "content_original": "...", "content_line_by_line": [...] }
+    3. { "content": "...", "translation": [...] }  (تنسيق بديل)
+    """
+    result = {
+        "title": default_title,
+        "content_original": "",
+        "content_line_by_line": [],
+        "exercises": []
+    }
+    
+    # محاولة العثور على الصفحة إذا كانت البيانات مغلفة برقم الصفحة
+    actual_data = data
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if str(key).isdigit() and isinstance(value, dict):
+                actual_data = value
+                break
+    
+    if not isinstance(actual_data, dict):
+        return result
+    
+    # استخراج العنوان
+    result["title"] = actual_data.get("title", actual_data.get("name", default_title))
+    
+    # استخراج المحتوى الأصلي - يدعم عدة أسماء للحقل
+    result["content_original"] = actual_data.get("content_original", "")
+    if not result["content_original"]:
+        result["content_original"] = actual_data.get("content", "")
+    if not result["content_original"]:
+        result["content_original"] = actual_data.get("text", "")
+    if not result["content_original"]:
+        result["content_original"] = actual_data.get("english_text", "")
+    
+    # استخراج الترجمة - يدعم عدة أسماء للحقل
+    translation = actual_data.get("content_line_by_line", [])
+    if not translation:
+        translation = actual_data.get("translation", [])
+    if not translation:
+        translation = actual_data.get("line_by_line", [])
+    if not translation:
+        translation = actual_data.get("arabic_translation", [])
+    
+    # معالجة الترجمة إذا كانت بصيغة مختلفة
+    if isinstance(translation, dict):
+        # قد تكون الترجمة على شكل { "1": { "en": "...", "ar": "..." } }
+        translation = list(translation.values())
+    elif isinstance(translation, str):
+        # إذا كانت الترجمة نصاً واحداً، نحوله إلى قائمة
+        translation = [{"en": f"Paragraph {i+1}", "ar": line} for i, line in enumerate(translation.split('\n')) if line.strip()]
+    
+    # تنظيف الترجمة والتأكد من تنسيقها الصحيح
+    cleaned_translation = []
+    for item in translation:
+        if isinstance(item, dict):
+            en_text = item.get("en", item.get("english", item.get("original", "")))
+            ar_text = item.get("ar", item.get("arabic", item.get("translation", "")))
+            if en_text or ar_text:
+                cleaned_translation.append({"en": en_text, "ar": ar_text})
+        elif isinstance(item, str) and item.strip():
+            # إذا كان عنصراً نصياً، نعتبره ترجمة بدون أصل إنجليزي
+            cleaned_translation.append({"en": "---", "ar": item})
+    result["content_line_by_line"] = cleaned_translation
+    
+    # استخراج التمارين والحلول
+    result["exercises"] = actual_data.get("exercises", [])
+    if not result["exercises"]:
+        result["exercises"] = actual_data.get("solved", [])
+    if not result["exercises"]:
+        result["exercises"] = actual_data.get("answers", [])
+    if not result["exercises"]:
+        result["exercises"] = actual_data.get("solutions", [])
+    
+    return result
+
 def load_pages_from_zip(zip_path):
+    """تحميل الصفحات من ملف ZIP مع دعم الترجمة بشكل كامل"""
     pages = {}
-    extract_dir = zip_path.replace(".zip", "")
+    
     if not os.path.exists(zip_path):
+        print(f"⚠️ الملف {zip_path} غير موجود")
         return pages
-    if not os.path.exists(extract_dir):
+    
+    extract_dir = zip_path.replace(".zip", "_extracted")
+    
+    # فك الضغط
+    try:
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir)
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-    for root, _, files in os.walk(extract_dir):
+        print(f"✅ تم فك ضغط {zip_path} إلى {extract_dir}")
+    except Exception as e:
+        print(f"❌ خطأ في فك الضغط {zip_path}: {e}")
+        return pages
+    
+    # البحث عن جميع ملفات JSON
+    json_files = []
+    for root, dirs, files in os.walk(extract_dir):
         for file in files:
-            if file.endswith(".json") and file != "index.json":
+            if file.endswith(".json"):
+                json_files.append(os.path.join(root, file))
+    
+    print(f"📄 عدد ملفات JSON في {zip_path}: {len(json_files)}")
+    
+    # تحميل كل ملف JSON
+    for file_path in json_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # استخراج رقم الصفحة من اسم الملف
+            filename = os.path.basename(file_path)
+            page_match = re.search(r'(\d+)', filename)
+            if not page_match:
+                continue
+            page_num = page_match.group(1)
+            
+            # استخراج البيانات
+            default_title = f"صفحة {page_num}"
+            page_data = extract_json_data(data, default_title, page_num)
+            
+            pages[page_num] = page_data
+            
+        except Exception as e:
+            print(f"⚠️ خطأ في تحميل {file_path}: {e}")
+    
+    # تنظيف الملفات المؤقتة
+    try:
+        shutil.rmtree(extract_dir)
+    except:
+        pass
+    
+    return pages
+
+# ==================== تحميل القواعد ====================
+def load_grammar_rules():
+    rules = {}
+    zip_path = "lessons.zip"
+    
+    if not os.path.exists(zip_path):
+        print(f"⚠️ {zip_path} غير موجود")
+        return rules
+    
+    extract_dir = "lessons_temp"
+    
+    try:
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir)
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_dir)
+        print(f"✅ تم فك ضغط {zip_path}")
+    except Exception as e:
+        print(f"❌ خطأ في فك ضغط القواعد: {e}")
+        return rules
+    
+    txt_files = []
+    for root, dirs, files in os.walk(extract_dir):
+        for file in files:
+            if file.endswith(".txt"):
+                txt_files.append(os.path.join(root, file))
+    
+    print(f"📄 عدد ملفات القواعد: {len(txt_files)}")
+    
+    for file_path in txt_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                filename = os.path.basename(file_path)
+                rule_name = filename.replace(".txt", "")
+                rules[rule_name] = clean_text_for_telegram(content)
+                print(f"✅ تم تحميل: {rule_name}")
+        except Exception as e:
+            print(f"⚠️ خطأ في {file_path}: {e}")
+    
+    try:
+        shutil.rmtree(extract_dir)
+    except:
+        pass
+    
+    return rules
+
+# ==================== تحميل الاختبارات ====================
+TESTS_BY_LEVEL = {
+    "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
+}
+
+def load_tests():
+    tests = {}
+    zip_path = "tests.zip"
+    
+    if not os.path.exists(zip_path):
+        return tests
+    
+    extract_dir = "tests_temp"
+    
+    try:
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir)
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_dir)
+    except Exception as e:
+        print(f"❌ خطأ في فك ضغط الاختبارات: {e}")
+        return tests
+    
+    for root, dirs, files in os.walk(extract_dir):
+        level = os.path.basename(root)
+        if level not in TESTS_BY_LEVEL:
+            continue
+        for file in files:
+            if file.endswith(".json"):
                 file_path = os.path.join(root, file)
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        page_num = file.replace("page_", "").replace(".json", "")
-                        if isinstance(data, dict):
-                            for key in data.keys():
-                                if str(key).isdigit():
-                                    page_num = str(key)
-                                    data = data[key]
-                                    break
-                        pages[page_num] = {
-                            "title": data.get("title", f"صفحة {page_num}"),
-                            "content_original": data.get("content_original", data.get("content", "")),
-                            "content_line_by_line": data.get("content_line_by_line", []),
-                            "exercises": data.get("exercises", data.get("solved", data.get("answers", [])))
-                        }
-                except:
-                    pass
-    return pages
+                        grammar_name = data.get("grammar_name", file.replace(".json", ""))
+                        if grammar_name:
+                            tests[grammar_name] = {"data": data, "level": level}
+                            TESTS_BY_LEVEL[level].append(grammar_name)
+                except Exception as e:
+                    print(f"⚠️ خطأ في تحميل الاختبار {file_path}: {e}")
+    
+    try:
+        shutil.rmtree(extract_dir)
+    except:
+        pass
+    
+    return tests
 
+# ==================== دوال تنظيف النص ====================
 def clean_text_for_telegram(text):
     if not text:
         return text
@@ -258,108 +465,6 @@ def clean_text_for_telegram(text):
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
-# ==================== تحميل القواعد ====================
-def load_grammar_rules():
-    rules = {}
-    zip_path = "lessons.zip"
-    extract_dir = "lessons_temp"
-    
-    if not os.path.exists(zip_path):
-        print(f"❌ {zip_path} غير موجود")
-        return rules
-    
-    print(f"📦 فك ضغط {zip_path}...")
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_dir)
-    print("✅ تم فك الضغط")
-    
-    txt_files = []
-    for root, dirs, files in os.walk(extract_dir):
-        for file in files:
-            if file.endswith(".txt"):
-                txt_files.append(os.path.join(root, file))
-    
-    print(f"📄 عدد ملفات TXT: {len(txt_files)}")
-    
-    for file_path in txt_files:
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                filename = os.path.basename(file_path)
-                rule_name = filename.replace(".txt", "")
-                rules[rule_name] = clean_text_for_telegram(content)
-                print(f"✅ تم تحميل: {rule_name} ({len(content)} حرف)")
-        except Exception as e:
-            print(f"⚠️ خطأ في {file_path}: {e}")
-    
-    shutil.rmtree(extract_dir)
-    print(f"📚 تم تحميل {len(rules)} قاعدة")
-    return rules
-
-# ==================== تحميل الاختبارات ====================
-TESTS_BY_LEVEL = {
-    "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
-}
-
-def load_tests():
-    tests = {}
-    zip_path = "tests.zip"
-    extract_dir = "tests_temp"
-    if not os.path.exists(zip_path):
-        return tests
-    if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_dir)
-    for level in TESTS_BY_LEVEL:
-        TESTS_BY_LEVEL[level] = []
-    for root, dirs, files in os.walk(extract_dir):
-        level = os.path.basename(root)
-        if level not in TESTS_BY_LEVEL:
-            continue
-        for file in files:
-            if file.endswith(".json"):
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        grammar_name = data.get("grammar_name")
-                        if grammar_name:
-                            tests[grammar_name] = {"data": data, "level": level}
-                            TESTS_BY_LEVEL[level].append(grammar_name)
-                except:
-                    pass
-    shutil.rmtree(extract_dir)
-    return tests
-
-print("📚 تحميل كتاب الطالب...")
-STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
-
-print("📚 تحميل كتاب الأنشطة...")
-ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
-
-print("📚 تحميل القواعد النحوية...")
-GRAMMAR_RULES = load_grammar_rules()
-
-print("📚 تحميل الاختبارات...")
-TESTS = load_tests()
-
-init_db()
-
-STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
-ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
-
-STUDENT_MIN = min(STUDENT_LIST) if STUDENT_LIST else 1
-STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
-ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
-ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
-
-print(f"✅ كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
-print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
-print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
-print(f"✅ الاختبارات: {len(TESTS)}")
-
-# ==================== دوال العرض (المعدلة للترجمة) ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
@@ -370,46 +475,36 @@ def format_text(content):
     content = content.replace("Reading", "\n📖 **Reading**\n")
     content = content.replace("Writing", "\n✏️ **Writing**\n")
     return content[:4000]
-def format_translation(page_data):
-    """تنسيق الترجمة - تبحث في جميع المفاتيح الممكنة"""
+
+def format_translation(translation_lines):
+    """
+    تنسيق الترجمة للعرض في تلغرام
+    """
+    if not translation_lines:
+        return "🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"
     
-    # إذا كانت البيانات قائمة
-    if isinstance(page_data, list):
-        if not page_data:
-            return "⚠️ لا توجد ترجمة"
-        result = ""
-        for item in page_data:
-            if isinstance(item, dict):
-                en = item.get('en', '')
-                ar = item.get('ar', '')
-                result += f"📖 **{en}**\n🌐 {ar}\n\n"
-            else:
-                result += f"{item}\n\n"
-        return result if result else "⚠️ لا توجد ترجمة"
+    result = "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    valid_lines = 0
     
-    # إذا كانت البيانات قاموساً
-    if isinstance(page_data, dict):
-        # محاولة 1: content_line_by_line
-        lines = page_data.get('content_line_by_line', [])
-        if lines:
-            result = ""
-            for item in lines:
-                en = item.get('en', '')
-                ar = item.get('ar', '')
-                result += f"📖 **{en}**\n🌐 {ar}\n\n"
-            return result
-        
-        # محاولة 2: translation (نص كامل)
-        translation = page_data.get('translation', '')
-        if translation:
-            return translation
-        
-        # محاولة 3: أي مفتاح آخر
-        for key in ['ar', 'arabic', 'ar_text', 'translated_text']:
-            if key in page_data and page_data[key]:
-                return page_data[key]
+    for item in translation_lines:
+        if isinstance(item, dict):
+            en_text = item.get('en', '')
+            ar_text = item.get('ar', '')
+            
+            if en_text and ar_text:
+                result += f"📖 **{en_text}**\n🌐 {ar_text}\n\n"
+                valid_lines += 1
+            elif ar_text and not en_text:
+                result += f"🌐 {ar_text}\n\n"
+                valid_lines += 1
+            elif en_text and not ar_text:
+                result += f"📖 **{en_text}**\n🌐 *(ترجمة غير متوفرة)*\n\n"
+                valid_lines += 1
     
-    return "⚠️ لا توجد ترجمة لهذه الصفحة"
+    if valid_lines == 0:
+        return "🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"
+    
+    return result
 
 def format_exercises(exercises):
     if not exercises:
@@ -437,7 +532,7 @@ def format_exercises(exercises):
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     return result
 
-# ==================== دالة الصوت مع دعم السرعات ====================
+# ==================== دالة الصوت ====================
 def text_to_audio(text, book_type, page_num, speed="عادي"):
     audio_dir = "audio"
     os.makedirs(audio_dir, exist_ok=True)
@@ -496,6 +591,7 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
         nav.append({"text": "التالي ▶️", "callback_data": f"{prefix}_page_{int(page_num)+1}"})
     if nav:
         buttons.append(nav)
+    
     if mode == 'original':
         buttons.append([
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"},
@@ -507,11 +603,12 @@ def get_page_buttons(book_type, page_num, mode, min_page, max_page):
             {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
             {"text": "📝 حل التمارين", "callback_data": f"{prefix}_solved_{page_num}"}
         ])
-    else:
+    elif mode == 'solved':
         buttons.append([
             {"text": "🔤 النص الأصلي", "callback_data": f"{prefix}_original_{page_num}"},
             {"text": "🌐 الترجمة", "callback_data": f"{prefix}_translated_{page_num}"}
         ])
+    
     buttons.append([{"text": "🏠 القائمة الرئيسية", "callback_data": "main_menu"}])
     return {"inline_keyboard": buttons}
 
@@ -697,6 +794,69 @@ def show_my_balance(chat_id, user_id):
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
+# ==================== تقرير التحميل ====================
+def print_load_report():
+    print("\n" + "="*50)
+    print("📊 تقرير تحميل البيانات")
+    print("="*50)
+    
+    # تقرير كتاب الطالب
+    print(f"\n📖 كتاب الطالب:")
+    print(f"   - عدد الصفحات: {len(STUDENT_PAGES)}")
+    pages_with_translation = sum(1 for p in STUDENT_PAGES.values() if p.get("content_line_by_line"))
+    print(f"   - صفحات مع ترجمة: {pages_with_translation}")
+    print(f"   - صفحات بدون ترجمة: {len(STUDENT_PAGES) - pages_with_translation}")
+    
+    # تقرير كتاب الأنشطة
+    print(f"\n✏️ كتاب الأنشطة:")
+    print(f"   - عدد الصفحات: {len(ACTIVITY_PAGES)}")
+    pages_with_translation = sum(1 for p in ACTIVITY_PAGES.values() if p.get("content_line_by_line"))
+    print(f"   - صفحات مع ترجمة: {pages_with_translation}")
+    print(f"   - صفحات بدون ترجمة: {len(ACTIVITY_PAGES) - pages_with_translation}")
+    
+    # تقرير القواعد
+    print(f"\n📚 القواعد النحوية:")
+    print(f"   - عدد القواعد: {len(GRAMMAR_RULES)}")
+    
+    # تقرير الاختبارات
+    print(f"\n📝 الاختبارات:")
+    print(f"   - عدد الاختبارات: {len(TESTS)}")
+    for level, tests in TESTS_BY_LEVEL.items():
+        print(f"   - {level}: {len(tests)} اختبار")
+    
+    print("="*50 + "\n")
+
+# ==================== تحميل جميع البيانات ====================
+print("🚀 بدء تحميل البيانات...")
+print("="*50)
+
+print("\n📚 تحميل كتاب الطالب...")
+STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
+
+print("\n📚 تحميل كتاب الأنشطة...")
+ACTIVITY_PAGES = load_pages_from_zip("activity_pages.zip")
+
+print("\n📚 تحميل القواعد النحوية...")
+GRAMMAR_RULES = load_grammar_rules()
+
+print("\n📚 تحميل الاختبارات...")
+TESTS = load_tests()
+
+# تهيئة قاعدة البيانات
+init_db()
+
+# إنشاء قوائم الأرقام
+STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
+ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
+
+STUDENT_MIN = min(STUDENT_LIST) if STUDENT_LIST else 1
+STUDENT_MAX = max(STUDENT_LIST) if STUDENT_LIST else 80
+ACTIVITY_MIN = min(ACTIVITY_LIST) if ACTIVITY_LIST else 1
+ACTIVITY_MAX = max(ACTIVITY_LIST) if ACTIVITY_LIST else 64
+
+# عرض تقرير التحميل
+print_load_report()
+
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
@@ -747,16 +907,9 @@ def webhook():
         
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
-            
-            print(f"🔍 طلب قاعدة: {rule_name}")
-            print(f"📚 القواعد المتوفرة: {list(GRAMMAR_RULES.keys())}")
-            
             if rule_name in GRAMMAR_RULES:
                 content = GRAMMAR_RULES[rule_name]
-                print(f"✅ القاعدة موجودة، طول النص: {len(content)}")
-                
                 keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
-                
                 max_len = 4000
                 if len(content) <= max_len:
                     send_message(chat_id, content, keyboard)
@@ -768,9 +921,7 @@ def webhook():
                         else:
                             send_message(chat_id, part)
             else:
-                print(f"❌ القاعدة {rule_name} غير موجودة")
-                send_message(chat_id, f"❌ القاعدة غير موجودة\n\nالقواعد المتوفرة: {', '.join(list(GRAMMAR_RULES.keys())[:10])}")
-            
+                send_message(chat_id, f"❌ القاعدة غير موجودة")
             return "OK"
         
         if cb_data == "back_to_grammar":
@@ -778,15 +929,13 @@ def webhook():
             send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             return "OK"
         
-        # قائمة سرعات الصوت
         if cb_data.startswith("audio_speed_"):
             parts = cb_data.split("_")
             prefix = parts[2]
             page_num = parts[3]
-            send_message(chat_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
+            edit_message(chat_id, msg_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
             return "OK"
         
-        # تشغيل الصوت بالسرعة المختارة
         if cb_data.startswith("audio_"):
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
@@ -844,34 +993,46 @@ def webhook():
                 send_message(user_id, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
             return "OK"
         
+        # معالجة أزرار الصفحات
         parts = cb_data.split("_")
         if len(parts) >= 3:
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
+            
             book_type = "student" if parts[0] == "student" else "activity"
             action = parts[1]
             page_num = parts[2]
             pages = STUDENT_PAGES if book_type == "student" else ACTIVITY_PAGES
             min_page = STUDENT_MIN if book_type == "student" else ACTIVITY_MIN
             max_page = STUDENT_MAX if book_type == "student" else ACTIVITY_MAX
+            
             if page_num in pages:
                 page = pages[page_num]
                 title = page.get("title", f"صفحة {page_num}")
+                
                 if action == "original" or action == "page":
                     content = format_text(page.get("content_original", ""))
+                    if not content or content == "لا يوجد محتوى":
+                        content = "⚠️ لا يوجد محتوى نصي في هذه الصفحة"
                     mode = "original"
+                    
                 elif action == "translated":
-    # تمرير الصفحة كاملة، وليس فقط content_line_by_line
-    content = format_translation(page)
-    mode = "translated"
+                    translation = page.get("content_line_by_line", [])
+                    content = format_translation(translation)
+                    mode = "translated"
+                    
                 elif action == "solved":
                     content = format_exercises(page.get("exercises", []))
                     mode = "solved"
+                    
                 else:
                     content = format_text(page.get("content_original", ""))
                     mode = "original"
-                edit_message(chat_id, msg_id, f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                
+                edit_message(chat_id, msg_id, 
+                           f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
+                           get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     if 'message' in data:
@@ -882,22 +1043,29 @@ def webhook():
         
         if text == "📊 رصيدي":
             show_my_balance(chat_id, user_id)
+            
         elif text == '/start' or text == "🏠 الرئيسية":
             send_message(chat_id, f"🎉 مرحباً بك!\n\n{get_usage_message(user_id)}", get_user_menu(user_id))
+            
         elif text == "💳 اشتراك":
-            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
+            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", 
+                        {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], 
+                                            [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
+            
         elif text == "📖 كتاب الطالب":
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
+            
         elif text == "✏️ كتاب الأنشطة":
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
+            
         elif text == "📚 القواعد":
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
@@ -906,17 +1074,22 @@ def webhook():
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             else:
                 send_message(chat_id, "📚 لا توجد قواعد متوفرة حالياً.")
+                
         elif text == "📝 تمارين":
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
                 return "OK"
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+            
         elif text == "📋 طلبات الاشتراك":
             show_pending_requests(chat_id, user_id)
+            
         elif text == "👥 المشتركين":
             show_active_subscriptions(chat_id, user_id)
+            
         elif text == "🛠️ الدعم الفني":
             contact_teacher(chat_id)
+            
         elif re.match(r'^\d{5,}$', text.replace(" ", "")):
             pending = load_pending()
             invoice_id = str(random.randint(100000, 999999))
@@ -933,7 +1106,11 @@ def webhook():
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
             send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم العملية: `{text}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
-            send_message(ADMIN_ID, f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
+            send_message(ADMIN_ID, 
+                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 {text}\n📌 رقم الطلب: {invoice_id}", 
+                        {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, 
+                                            {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
+            
         elif text.isdigit():
             if not check_and_deduct_request(user_id):
                 send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
@@ -942,13 +1119,17 @@ def webhook():
             if selected_book == "student":
                 if text in STUDENT_PAGES:
                     page = STUDENT_PAGES[text]
-                    send_message(chat_id, f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX))
+                    send_message(chat_id, 
+                               f"📖 **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", 
+                               get_page_buttons("student", text, "original", STUDENT_MIN, STUDENT_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الطالب")
             elif selected_book == "activity":
                 if text in ACTIVITY_PAGES:
                     page = ACTIVITY_PAGES[text]
-                    send_message(chat_id, f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX))
+                    send_message(chat_id, 
+                               f"✏️ **{page['title']}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{format_text(page.get('content_original', ''))}", 
+                               get_page_buttons("activity", text, "original", ACTIVITY_MIN, ACTIVITY_MAX))
                 else:
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الأنشطة")
             else:
@@ -959,6 +1140,5 @@ def webhook():
     return "OK"
 
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
