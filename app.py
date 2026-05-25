@@ -5,7 +5,7 @@ import shutil
 import re
 import asyncio
 import random
-import base64
+import sqlite3
 import edge_tts
 from flask import Flask, request
 import requests
@@ -33,119 +33,103 @@ user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
 
-# ==================== إعدادات GitHub ====================
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = "ENGWALI1/EngwAliBot"
-GITHUB_PATH = "bot_data.json"
+# ==================== قاعدة بيانات SQLite ====================
+DB_PATH = "bot_data.db"
 
-def save_to_github(data):
-    if not GITHUB_TOKEN:
-        return False
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-    content = json.dumps(data, indent=2, ensure_ascii=False)
-    content_bytes = content.encode('utf-8')
-    encoded_content = base64.b64encode(content_bytes).decode('utf-8')
-    
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    response = requests.get(url, headers=headers)
-    sha = response.json().get('sha') if response.status_code == 200 else None
-    
-    payload = {"message": "تحديث بيانات البوت", "content": encoded_content, "branch": "main"}
-    if sha:
-        payload["sha"] = sha
-    
-    response = requests.put(url, headers=headers, json=payload)
-    return response.status_code in [200, 201]
-
-def load_from_github():
-    if not GITHUB_TOKEN:
-        return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        content = response.json().get('content', '')
-        if content:
-            decoded = base64.b64decode(content).decode('utf-8')
-            return json.loads(decoded)
-    return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-
-# ==================== دوال الاشتراك والاستخدام ====================
-def load_subs():
-    return load_from_github().get("subscriptions", {})
-
-def save_subs(subs):
-    data = load_from_github()
-    data["subscriptions"] = subs
-    save_to_github(data)
-
-def load_pending():
-    return load_from_github().get("pending_requests", {})
-
-def save_pending(pending):
-    data = load_from_github()
-    data["pending_requests"] = pending
-    save_to_github(data)
-
-def load_user_usage():
-    return load_from_github().get("user_usage", {})
-
-def save_user_usage(usage):
-    data = load_from_github()
-    data["user_usage"] = usage
-    save_to_github(data)
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions
+                 (user_id TEXT PRIMARY KEY, expiry TEXT, subscribed_at TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS pending_requests
+                 (invoice_id TEXT PRIMARY KEY, user_id TEXT, username TEXT, 
+                  first_name TEXT, amount INTEGER, transaction_id TEXT, plan TEXT, created_at TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_usage
+                 (user_id TEXT PRIMARY KEY, used INTEGER DEFAULT 0)''')
+    conn.commit()
+    conn.close()
+    print("✅ قاعدة البيانات جاهزة")
 
 def is_subscribed(user_id):
-    subs = load_subs()
-    expiry = subs.get(str(user_id))
-    return expiry and datetime.now().isoformat() < expiry
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT expiry FROM subscriptions WHERE user_id = ?", (str(user_id),))
+    result = c.fetchone()
+    conn.close()
+    return result and datetime.now().isoformat() < result[0]
 
 def add_subscription(user_id, expiry_date):
-    subs = load_subs()
-    subs[str(user_id)] = expiry_date
-    save_subs(subs)
-
-def remove_subscription(user_id):
-    subs = load_subs()
-    if str(user_id) in subs:
-        del subs[str(user_id)]
-        save_subs(subs)
-
-def add_pending_request(invoice_id, data):
-    pending = load_pending()
-    pending[invoice_id] = data
-    save_pending(pending)
-
-def remove_pending_request(invoice_id):
-    pending = load_pending()
-    if invoice_id in pending:
-        del pending[invoice_id]
-        save_pending(pending)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO subscriptions (user_id, expiry, subscribed_at) VALUES (?, ?, ?)",
+              (str(user_id), expiry_date, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    print(f"✅ تم تفعيل اشتراك للمستخدم {user_id}")
 
 def get_user_usage(user_id):
-    usage = load_user_usage()
-    return usage.get(str(user_id), 0)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT used FROM user_usage WHERE user_id = ?", (str(user_id),))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else 0
 
 def increment_user_usage(user_id):
-    usage = load_user_usage()
-    key = str(user_id)
-    usage[key] = usage.get(key, 0) + 1
-    save_user_usage(usage)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO user_usage (user_id, used) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET used = used + 1", (str(user_id),))
+    conn.commit()
+    conn.close()
 
 def reset_user_usage(user_id):
-    usage = load_user_usage()
-    key = str(user_id)
-    if key in usage:
-        usage[key] = 0
-        save_user_usage(usage)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE user_usage SET used = 0 WHERE user_id = ?", (str(user_id),))
+    conn.commit()
+    conn.close()
+
+def load_pending():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT invoice_id, user_id, username, first_name, amount, transaction_id, plan FROM pending_requests")
+    rows = c.fetchall()
+    conn.close()
+    pending = {}
+    for row in rows:
+        pending[row[0]] = {
+            "user_id": row[1],
+            "username": row[2],
+            "first_name": row[3],
+            "amount": row[4],
+            "transaction_id": row[5],
+            "plan": row[6]
+        }
+    return pending
+
+def save_pending(pending):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM pending_requests")
+    for invoice_id, p in pending.items():
+        c.execute("INSERT INTO pending_requests (invoice_id, user_id, username, first_name, amount, transaction_id, plan, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                  (invoice_id, p["user_id"], p.get("username", ""), p.get("first_name", ""), 
+                   p["amount"], p.get("transaction_id", ""), p["plan"], datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+def remove_pending_request(invoice_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM pending_requests WHERE invoice_id = ?", (invoice_id,))
+    conn.commit()
+    conn.close()
 
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return True
-    if get_user_usage(user_id) >= FREE_REQUESTS:
+    used = get_user_usage(user_id)
+    if used >= FREE_REQUESTS:
         return False
     increment_user_usage(user_id)
     return True
@@ -153,17 +137,15 @@ def check_and_deduct_request(user_id):
 def get_remaining_requests(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    remaining = FREE_REQUESTS - get_user_usage(user_id)
+    used = get_user_usage(user_id)
+    remaining = FREE_REQUESTS - used
     return max(0, remaining)
 
 def get_usage_message(user_id):
     if user_id == ADMIN_ID:
         return "👑 أنت المسؤول، لديك وصول غير محدود"
     if is_subscribed(user_id):
-        subs = load_subs()
-        expiry = subs.get(str(user_id), "")
-        expiry_date = expiry[:10] if expiry else "غير محدد"
-        return f"✅ **مشترك نشط**\n📅 ينتهي: {expiry_date}\n🎉 وصول غير محدود"
+        return "✅ **مشترك نشط**\n🎉 وصول غير محدود"
     remaining = get_remaining_requests(user_id)
     if remaining == 0:
         return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك بـ 50 ل.س فقط للوصول غير المحدود"
@@ -358,6 +340,8 @@ GRAMMAR_RULES = load_grammar_rules()
 print("📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
+init_db()
+
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
 
@@ -392,14 +376,12 @@ def format_translation(lines):
     return result
 
 def format_exercises(exercises):
-    """تنسيق حل التمارين (يدعم جميع الأنواع: عادي، speaking، matching)"""
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
     
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, ex in enumerate(exercises, 1):
-        # تمرين محادثة (speaking)
         if isinstance(ex, dict) and ex.get('type') == 'speaking':
             questions = ex.get('questions', [])
             answers = ex.get('answers', [])
@@ -409,32 +391,14 @@ def format_exercises(exercises):
                 if j < len(answers):
                     result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
                 result += "\n"
-        
-        # تمرين مطابقة (matching)
-        elif isinstance(ex, dict) and ex.get('type') == 'matching':
-            result += f"**🔗 تمرين المزاوجة {i}:**\n"
-            result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
-        
-        # تمرين عادي (سؤال وجواب)
         elif isinstance(ex, dict):
             question = ex.get('text') or ex.get('question') or f'سؤال {i}'
             answer = ex.get('answer') or ex.get('a') or '---'
-            
             if isinstance(answer, list):
-                answer = '\n   • ' + '\n   • '.join(str(a) for a in answer)
-                answer = f"• {answer}"
-            
+                answer = ', '.join(str(a) for a in answer)
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
-        
-        # نص عادي
         elif isinstance(ex, str):
             result += f"**{i}. {ex[:200]}**\n\n"
-        
-        # قائمة
-        elif isinstance(ex, list):
-            result += f"**{i}. {', '.join(str(x) for x in ex[:5])}**\n\n"
-        
-        # أي شيء آخر
         else:
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     
@@ -644,12 +608,19 @@ def show_active_subscriptions(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    subs = load_subs()
-    if not subs:
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, expiry FROM subscriptions ORDER BY expiry DESC")
+    rows = c.fetchall()
+    conn.close()
+    
+    if not rows:
         send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
         return
+    
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    for uid, expiry in subs.items():
+    for uid, expiry in rows:
         expiry_date = expiry[:10] if expiry else "غير محدد"
         text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
     send_message(chat_id, text, parse_mode="Markdown")
@@ -662,38 +633,18 @@ def show_my_balance(chat_id, user_id):
     if user_id == ADMIN_ID:
         text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود"
     elif is_subscribed(user_id):
-        subs = load_subs()
-        expiry = subs.get(str(user_id), "")
-        expiry_date = expiry[:10] if expiry else "غير محدد"
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT expiry FROM subscriptions WHERE user_id = ?", (str(user_id),))
+        result = c.fetchone()
+        conn.close()
+        expiry_date = result[0][:10] if result else "غير محدد"
         text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry_date}\n🎉 وصول غير محدود"
     else:
-        remaining = get_remaining_requests(user_id)
-        text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود\n\n📞 سيريتل كاش: 15570270"
+        used = get_user_usage(user_id)
+        remaining = FREE_REQUESTS - used
+        text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
-
-# ==================== كود تشخيصي ====================
-@app.route('/check_page/<page_num>')
-def check_page(page_num):
-    if True:  # تخطي التحقق مؤقتاً
-        if page_num in STUDENT_PAGES:
-            page = STUDENT_PAGES[page_num]
-            exercises = page.get("exercises", [])
-            
-            result = f"📄 صفحة {page_num}\n"
-            result += f"📚 نوع التمارين: {type(exercises).__name__}\n"
-            result += f"🔢 عدد التمارين: {len(exercises)}\n"
-            if exercises:
-                result += f"\n📌 أول تمرين:\n"
-                first = exercises[0]
-                if isinstance(first, dict):
-                    result += f"   المفاتيح: {list(first.keys())}\n"
-                    result += f"   المحتوى: {str(first)[:200]}"
-                else:
-                    result += f"   المحتوى: {str(first)[:200]}"
-            return result, 200
-        
-        return f"❌ الصفحة {page_num} غير موجودة", 404
-    return "غير مصرح", 403
 
 # ==================== معالج Webhook ====================
 @app.route('/')
@@ -937,5 +888,6 @@ def webhook():
     return "OK"
 
 if __name__ == '__main__':
+    init_db()
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
