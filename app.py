@@ -359,7 +359,7 @@ print(f"✅ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"✅ القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"✅ الاختبارات: {len(TESTS)}")
 
-# ==================== دوال العرض (المعدلة) ====================
+# ==================== دوال العرض (المعدلة للترجمة) ====================
 def format_text(content):
     if not content:
         return "لا يوجد محتوى"
@@ -372,25 +372,10 @@ def format_text(content):
     return content[:4000]
 
 def format_translation(page_data):
-    """تنسيق الترجمة (يدعم القواميس والقوائم والمفاتيح المختلفة)"""
+    """تنسيق الترجمة من content_line_by_line"""
     
-    # إذا كانت page_data قائمة (list)
-    if isinstance(page_data, list):
-        if not page_data:
-            return "⚠️ لا توجد ترجمة لهذه الصفحة"
-        result = ""
-        for item in page_data:
-            if isinstance(item, dict):
-                en = item.get('en', '')
-                ar = item.get('ar', '')
-                result += f"📖 **{en}**\n🌐 {ar}\n\n"
-            else:
-                result += f"{item}\n\n"
-        return result if result else "⚠️ لا توجد ترجمة لهذه الصفحة"
-    
-    # إذا كانت page_data قاموساً (dict)
+    # محاولة استخراج الترجمة من content_line_by_line
     if isinstance(page_data, dict):
-        # محاولة 1: content_line_by_line
         lines = page_data.get('content_line_by_line', [])
         if lines:
             result = ""
@@ -400,39 +385,10 @@ def format_translation(page_data):
                 result += f"📖 **{en}**\n🌐 {ar}\n\n"
             return result
         
-        # محاولة 2: translation (نص كامل)
+        # إذا لم توجد ترجمة سطرية، جرب الترجمة النصية
         translation = page_data.get('translation', '')
         if translation:
             return translation
-        
-        # محاولة 3: أي مفتاح آخر يحتوي على ترجمة
-        for key in ['ar_text', 'arabic', 'ar', 'translated_text']:
-            if key in page_data and page_data[key]:
-                return page_data[key]
-    
-    return "⚠️ لا توجد ترجمة لهذه الصفحة"
-    
-    # إذا كانت page_data قاموساً (dict)
-    if isinstance(page_data, dict):
-        # محاولة 1: content_line_by_line
-        lines = page_data.get('content_line_by_line', [])
-        if lines:
-            result = ""
-            for item in lines:
-                en = item.get('en', '')
-                ar = item.get('ar', '')
-                result += f"📖 **{en}**\n🌐 {ar}\n\n"
-            return result
-        
-        # محاولة 2: translation (نص كامل)
-        translation = page_data.get('translation', '')
-        if translation:
-            return translation
-        
-        # محاولة 3: أي مفتاح آخر يحتوي على ترجمة
-        for key in ['ar_text', 'arabic', 'ar', 'translated_text']:
-            if key in page_data and page_data[key]:
-                return page_data[key]
     
     return "⚠️ لا توجد ترجمة لهذه الصفحة"
 
@@ -887,6 +843,7 @@ def webhook():
                     content = format_text(page.get("content_original", ""))
                     mode = "original"
                 elif action == "translated":
+                    # تمرير الصفحة كاملة وليس مجرد content_line_by_line
                     content = format_translation(page)
                     mode = "translated"
                 elif action == "solved":
