@@ -251,13 +251,16 @@ def load_pages_from_zip(zip_path):
     return pages
 
 def clean_text_for_telegram(text):
+    """تنظيف النص من الرموز التي لا تظهر في Telegram مع الحفاظ على التنسيق"""
     if not text:
         return text
+    # إزالة الرموز الخاصة فقط، مع الحفاظ على علامات التنسيق
     text = text.replace('┌', '').replace('┐', '').replace('└', '').replace('┘', '')
     text = text.replace('├', '').replace('┤', '').replace('─', '').replace('│', '')
     text = text.replace('█', '').replace('░', '').replace('▒', '').replace('▓', '')
     text = text.replace('┃', '').replace('━', '').replace('┏', '').replace('┓', '')
-    text = text.replace('┗', '').replace('┛', '').replace('**', '').replace('__', '')
+    text = text.replace('┗', '').replace('┛', '')
+    # لا نحذف ** و __ لأنها تستخدم للتنسيق في Markdown
     text = re.sub(r'\n{4,}', '\n\n', text)
     return text.strip()
 
@@ -267,11 +270,14 @@ def load_grammar_rules():
     extract_dir = "lessons"
     
     if not os.path.exists(zip_path):
+        print("⚠️ lessons.zip غير موجود")
         return rules
     
     if not os.path.exists(extract_dir):
+        print("📦 فك ضغط lessons.zip...")
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
+        print("✅ تم فك ضغط lessons.zip")
     
     for root, _, files in os.walk(extract_dir):
         for file in files:
@@ -281,8 +287,11 @@ def load_grammar_rules():
                     with open(file_path, 'r', encoding='utf-8') as f:
                         rule_name = file.replace(".txt", "")
                         rules[rule_name] = clean_text_for_telegram(f.read())
-                except:
-                    pass
+                        print(f"✅ تم تحميل قاعدة: {rule_name}")
+                except Exception as e:
+                    print(f"⚠️ خطأ في {file}: {e}")
+    
+    print(f"📚 تم تحميل {len(rules)} قاعدة")
     return rules
 
 # ==================== تحميل الاختبارات ====================
