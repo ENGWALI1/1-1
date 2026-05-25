@@ -5,7 +5,7 @@ import shutil
 import re
 import asyncio
 import random
-import sqlite3
+import base64
 import edge_tts
 from flask import Flask, request
 import requests
@@ -27,6 +27,11 @@ SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 
+# إعدادات GitHub
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_REPO = "ENGWALI1"  # اسم المستخدم/اسم المشروع
+GITHUB_FILE_PATH = "subscribers.json"  # مسار الملف في الريبو
+
 # سرعات الصوت
 VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
 
@@ -34,96 +39,190 @@ user_book_choice = {}
 user_plan_choice = {}
 user_test_data = {}
 
-# ==================== قاعدة بيانات SQLite ====================
-DB_PATH = "bot_data.db"
+# ==================== دوال GitHub ====================
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions
-                 (user_id TEXT PRIMARY KEY, expiry TEXT, subscribed_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS pending_requests
-                 (invoice_id TEXT PRIMARY KEY, user_id TEXT, username TEXT, 
-                  first_name TEXT, amount INTEGER, transaction_id TEXT, plan TEXT, created_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_usage
-                 (user_id TEXT PRIMARY KEY, used INTEGER DEFAULT 0)''')
-    conn.commit()
-    conn.close()
-    print("✅ قاعدة البيانات جاهزة")
+def load_from_github():
+    """تحميل البيانات من GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ GITHUB_TOKEN غير موجود، سيتم استخدام ملف محلي")
+        return load_from_local()
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/{GITHUB_FILE_PATH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            content = response.json().get('content', '')
+            if content:
+                decoded = base64.b64decode(content).decode('utf-8')
+                data = json.loads(decoded)
+                print("✅ تم تحميل البيانات من GitHub")
+                return data
+        elif response.status_code == 404:
+            # الملف غير موجود، ننشئه
+            print("📁 ملف subscribers.json غير موجود، سيتم إنشاؤه")
+            default_data = {"subscriptions": {}, "pending_requests": {}}
+            save_to_github(default_data)
+            return default_data
+        else:
+            print(f"⚠️ خطأ في تحميل البيانات من GitHub: {response.status_code}")
+            return load_from_local()
+    except Exception as e:
+        print(f"❌ خطأ في الاتصال بـ GitHub: {e}")
+        return load_from_local()
+
+def save_to_github(data):
+    """حفظ البيانات إلى GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ GITHUB_TOKEN غير موجود، سيتم حفظ محلياً")
+        save_to_local(data)
+        return False
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/{GITHUB_FILE_PATH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # تحويل البيانات إلى JSON
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    
+    # الحصول على SHA للملف الحالي (لتحديثه)
+    try:
+        response = requests.get(url, headers=headers)
+        sha = response.json().get('sha') if response.status_code == 200 else None
+    except:
+        sha = None
+    
+    # إعداد payload
+    payload = {
+        "message": f"Update subscribers data - {datetime.now().isoformat()}",
+        "content": encoded_content,
+        "branch": "main"
+    }
+    if sha:
+        payload["sha"] = sha
+    
+    try:
+        response = requests.put(url, headers=headers, json=payload)
+        if response.status_code in [200, 201]:
+            print("✅ تم حفظ البيانات إلى GitHub")
+            return True
+        else:
+            print(f"⚠️ خطأ في حفظ البيانات: {response.status_code}")
+            save_to_local(data)
+            return False
+    except Exception as e:
+        print(f"❌ خطأ في حفظ البيانات: {e}")
+        save_to_local(data)
+        return False
+
+def load_from_local():
+    """تحميل البيانات من ملف محلي (نسخة احتياطية)"""
+    local_file = "subscribers_local.json"
+    try:
+        if os.path.exists(local_file):
+            with open(local_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                print("✅ تم تحميل البيانات من الملف المحلي")
+                return data
+    except Exception as e:
+        print(f"⚠️ خطأ في تحميل الملف المحلي: {e}")
+    
+    return {"subscriptions": {}, "pending_requests": {}}
+
+def save_to_local(data):
+    """حفظ البيانات إلى ملف محلي (نسخة احتياطية)"""
+    local_file = "subscribers_local.json"
+    try:
+        with open(local_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print("✅ تم حفظ نسخة احتياطية محلياً")
+    except Exception as e:
+        print(f"⚠️ خطأ في حفظ النسخة المحلية: {e}")
+
+# ==================== دوال البيانات ====================
+
+def get_all_data():
+    """الحصول على جميع البيانات (مع cache مؤقت)"""
+    if not hasattr(get_all_data, 'cache'):
+        get_all_data.cache = load_from_github()
+        get_all_data.last_load = datetime.now()
+    
+    # تحديث الكاش كل 5 دقائق
+    if (datetime.now() - get_all_data.last_load).seconds > 300:
+        get_all_data.cache = load_from_github()
+        get_all_data.last_load = datetime.now()
+    
+    return get_all_data.cache
+
+def save_all_data(data):
+    """حفظ جميع البيانات وتحديث الكاش"""
+    get_all_data.cache = data
+    get_all_data.last_load = datetime.now()
+    save_to_github(data)
 
 def is_subscribed(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT expiry FROM subscriptions WHERE user_id = ?", (str(user_id),))
-    result = c.fetchone()
-    conn.close()
-    return result and datetime.now().isoformat() < result[0]
+    data = get_all_data()
+    user_id_str = str(user_id)
+    if user_id_str in data.get("subscriptions", {}):
+        expiry = data["subscriptions"][user_id_str].get("expiry", "")
+        return expiry and datetime.now().isoformat() < expiry
+    return False
 
 def add_subscription(user_id, expiry_date):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO subscriptions (user_id, expiry, subscribed_at) VALUES (?, ?, ?)",
-              (str(user_id), expiry_date, datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
+    data = get_all_data()
+    user_id_str = str(user_id)
+    if "subscriptions" not in data:
+        data["subscriptions"] = {}
+    data["subscriptions"][user_id_str] = {
+        "expiry": expiry_date,
+        "subscribed_at": datetime.now().isoformat()
+    }
+    save_all_data(data)
 
 def get_user_usage(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT used FROM user_usage WHERE user_id = ?", (str(user_id),))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else 0
+    data = get_all_data()
+    user_id_str = str(user_id)
+    if "user_usage" not in data:
+        data["user_usage"] = {}
+        save_all_data(data)
+    return data["user_usage"].get(user_id_str, 0)
 
 def increment_user_usage(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("INSERT INTO user_usage (user_id, used) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET used = used + 1", (str(user_id),))
-    conn.commit()
-    conn.close()
+    data = get_all_data()
+    user_id_str = str(user_id)
+    if "user_usage" not in data:
+        data["user_usage"] = {}
+    data["user_usage"][user_id_str] = data["user_usage"].get(user_id_str, 0) + 1
+    save_all_data(data)
 
 def reset_user_usage(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE user_usage SET used = 0 WHERE user_id = ?", (str(user_id),))
-    conn.commit()
-    conn.close()
+    data = get_all_data()
+    user_id_str = str(user_id)
+    if "user_usage" in data:
+        data["user_usage"][user_id_str] = 0
+        save_all_data(data)
 
 def load_pending():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT invoice_id, user_id, username, first_name, amount, transaction_id, plan FROM pending_requests")
-    rows = c.fetchall()
-    conn.close()
-    pending = {}
-    for row in rows:
-        pending[row[0]] = {
-            "user_id": row[1],
-            "username": row[2],
-            "first_name": row[3],
-            "amount": row[4],
-            "transaction_id": row[5],
-            "plan": row[6]
-        }
-    return pending
+    data = get_all_data()
+    return data.get("pending_requests", {})
 
 def save_pending(pending):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM pending_requests")
-    for invoice_id, p in pending.items():
-        c.execute("INSERT INTO pending_requests (invoice_id, user_id, username, first_name, amount, transaction_id, plan, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                  (invoice_id, p["user_id"], p.get("username", ""), p.get("first_name", ""), 
-                   p["amount"], p.get("transaction_id", ""), p["plan"], datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
+    data = get_all_data()
+    data["pending_requests"] = pending
+    save_all_data(data)
 
 def remove_pending_request(invoice_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM pending_requests WHERE invoice_id = ?", (invoice_id,))
-    conn.commit()
-    conn.close()
+    data = get_all_data()
+    if "pending_requests" in data and invoice_id in data["pending_requests"]:
+        del data["pending_requests"][invoice_id]
+        save_all_data(data)
 
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID:
@@ -216,12 +315,9 @@ def get_user_menu(user_id):
     else:
         return unsubscribed_menu
 
-# ==================== تحميل البيانات المحسن بالكامل ====================
+# ==================== تحميل البيانات ====================
 
 def load_pages_from_zip(zip_path):
-    """
-    تحميل الصفحات من ملف ZIP مع دعم الترجمة بشكل كامل
-    """
     pages = {}
     
     if not os.path.exists(zip_path):
@@ -237,7 +333,7 @@ def load_pages_from_zip(zip_path):
             z.extractall(extract_dir)
         print(f"✅ تم فك ضغط {os.path.basename(zip_path)}")
     except Exception as e:
-        print(f"❌ خطأ في فك الضغط {zip_path}: {e}")
+        print(f"❌ خطأ في فك الضغط: {e}")
         return pages
     
     json_files = []
@@ -245,8 +341,6 @@ def load_pages_from_zip(zip_path):
         for file in files:
             if file.endswith(".json"):
                 json_files.append(os.path.join(root, file))
-    
-    print(f"📄 عدد ملفات JSON في {os.path.basename(zip_path)}: {len(json_files)}")
     
     for file_path in json_files:
         try:
@@ -260,13 +354,9 @@ def load_pages_from_zip(zip_path):
             if not page_num:
                 continue
             
-            # البحث عن البيانات الصحيحة
             actual_data = data
-            
-            # حالة: البيانات داخل مفتاح برقم الصفحة
             if isinstance(data, dict) and page_num in data:
                 actual_data = data[page_num]
-            # حالة: البحث عن أي مفتاح رقمي
             elif isinstance(data, dict):
                 for key, value in data.items():
                     if str(key).isdigit() and isinstance(value, dict):
@@ -277,44 +367,33 @@ def load_pages_from_zip(zip_path):
             if not isinstance(actual_data, dict):
                 continue
             
-            # استخراج الترجمة
             translation = actual_data.get("content_line_by_line", [])
             if not translation:
                 translation = actual_data.get("translation", [])
-            if not translation:
-                translation = actual_data.get("line_by_line", [])
             
-            # تنظيف الترجمة
             cleaned_translation = []
             if translation and isinstance(translation, list):
                 for item in translation:
                     if isinstance(item, dict):
-                        en_text = item.get("en", item.get("english", item.get("original", "")))
-                        ar_text = item.get("ar", item.get("arabic", item.get("translation", "")))
+                        en_text = item.get("en", "")
+                        ar_text = item.get("ar", "")
                         if en_text or ar_text:
                             cleaned_translation.append({"en": en_text, "ar": ar_text})
-                    elif isinstance(item, str) and item.strip():
-                        cleaned_translation.append({"en": "---", "ar": item})
             
             pages[page_num] = {
                 "title": actual_data.get("title", f"صفحة {page_num}"),
                 "content_original": actual_data.get("content_original", actual_data.get("content", "")),
                 "content_line_by_line": cleaned_translation,
-                "exercises": actual_data.get("exercises", actual_data.get("solved", actual_data.get("answers", [])))
+                "exercises": actual_data.get("exercises", actual_data.get("solved", []))
             }
             
         except Exception as e:
             print(f"⚠️ خطأ في تحميل {file_path}: {e}")
     
-    # تنظيف الملفات المؤقتة
     try:
         shutil.rmtree(extract_dir)
     except:
         pass
-    
-    # إحصائيات
-    pages_with_translation = sum(1 for p in pages.values() if p.get("content_line_by_line"))
-    print(f"   ✅ تم تحميل {len(pages)} صفحة ({pages_with_translation} مع ترجمة)")
     
     return pages
 
@@ -323,7 +402,6 @@ def load_grammar_rules():
     zip_path = "lessons.zip"
     
     if not os.path.exists(zip_path):
-        print(f"⚠️ {zip_path} غير موجود")
         return rules
     
     extract_dir = "lessons_temp"
@@ -333,7 +411,6 @@ def load_grammar_rules():
             shutil.rmtree(extract_dir)
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_dir)
-        print(f"✅ تم فك ضغط {zip_path}")
     except Exception as e:
         print(f"❌ خطأ في فك ضغط القواعد: {e}")
         return rules
@@ -343,8 +420,6 @@ def load_grammar_rules():
         for file in files:
             if file.endswith(".txt"):
                 txt_files.append(os.path.join(root, file))
-    
-    print(f"📄 عدد ملفات القواعد: {len(txt_files)}")
     
     for file_path in txt_files:
         try:
@@ -363,7 +438,7 @@ def load_grammar_rules():
     
     return rules
 
-# ==================== تحميل الاختبارات ====================
+# ==================== الاختبارات ====================
 TESTS_BY_LEVEL = {
     "beginner_1": [], "beginner_2": [], "intermediate_1": [], "intermediate_2": [], "advanced": []
 }
@@ -434,14 +509,10 @@ def format_text(content):
     return content[:4000]
 
 def format_translation(translation_lines):
-    """
-    تنسيق الترجمة للعرض في تلغرام مع تقسيم النص الطويل
-    """
     if not translation_lines:
-        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"]
+        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**"]
     
-    MAX_LENGTH = 3800  # حد آمن أقل من 4096
-    
+    MAX_LENGTH = 3800
     all_parts = []
     current_part = "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     current_length = len(current_part)
@@ -456,12 +527,9 @@ def format_translation(translation_lines):
                 line = f"📖 **{en_text}**\n🌐 {ar_text}\n\n"
             elif ar_text and not en_text:
                 line = f"🌐 {ar_text}\n\n"
-            elif en_text and not ar_text:
-                line = f"📖 **{en_text}**\n🌐 *(ترجمة غير متوفرة)*\n\n"
             else:
                 continue
             
-            # إذا تجاوز السطر الحالي الحد، احفظ الجزء الحالي وابدأ جزءاً جديداً
             if current_length + len(line) > MAX_LENGTH:
                 all_parts.append(current_part)
                 part_index += 1
@@ -471,13 +539,11 @@ def format_translation(translation_lines):
             current_part += line
             current_length += len(line)
     
-    # أضف الجزء الأخير
     if current_part and current_part != "🌐 **الترجمة إلى العربية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n":
         all_parts.append(current_part)
     
-    # إذا لم نجد أي ترجمة صالحة
     if not all_parts:
-        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**\n\n📝 يمكنك طلب الترجمة عبر الدعم الفني: @ENGWALI1"]
+        return None, ["🚫 **لا توجد ترجمة متوفرة لهذه الصفحة**"]
     
     return len(all_parts), all_parts
 
@@ -486,16 +552,7 @@ def format_exercises(exercises):
         return "لا توجد تمارين في هذه الصفحة"
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for i, ex in enumerate(exercises, 1):
-        if isinstance(ex, dict) and ex.get('type') == 'speaking':
-            questions = ex.get('questions', [])
-            answers = ex.get('answers', [])
-            result += f"**🗣️ نشاط المحادثة {i}:**\n"
-            for j, q in enumerate(questions):
-                result += f"**سؤال {j+1}:** {q}\n"
-                if j < len(answers):
-                    result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
-                result += "\n"
-        elif isinstance(ex, dict):
+        if isinstance(ex, dict):
             question = ex.get('text') or ex.get('question') or f'سؤال {i}'
             answer = ex.get('answer') or ex.get('a') or '---'
             if isinstance(answer, list):
@@ -503,8 +560,6 @@ def format_exercises(exercises):
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
         elif isinstance(ex, str):
             result += f"**{i}. {ex[:200]}**\n\n"
-        else:
-            result += f"**{i}. {str(ex)[:200]}**\n\n"
     return result
 
 # ==================== دالة الصوت ====================
@@ -734,17 +789,14 @@ def show_active_subscriptions(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id, expiry FROM subscriptions ORDER BY expiry DESC")
-    rows = c.fetchall()
-    conn.close()
-    if not rows:
+    data = get_all_data()
+    subscriptions = data.get("subscriptions", {})
+    if not subscriptions:
         send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
         return
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    for uid, expiry in rows:
-        expiry_date = expiry[:10] if expiry else "غير محدد"
+    for uid, info in subscriptions.items():
+        expiry_date = info.get("expiry", "غير محدد")[:10]
         text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
@@ -756,13 +808,9 @@ def show_my_balance(chat_id, user_id):
     if user_id == ADMIN_ID:
         text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود"
     elif is_subscribed(user_id):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT expiry FROM subscriptions WHERE user_id = ?", (str(user_id),))
-        result = c.fetchone()
-        conn.close()
-        expiry_date = result[0][:10] if result else "غير محدد"
-        text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry_date}\n🎉 وصول غير محدود"
+        data = get_all_data()
+        expiry = data.get("subscriptions", {}).get(str(user_id), {}).get("expiry", "غير محدد")[:10]
+        text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry}\n🎉 وصول غير محدود"
     else:
         used = get_user_usage(user_id)
         remaining = FREE_REQUESTS - used
@@ -773,6 +821,12 @@ def show_my_balance(chat_id, user_id):
 print("="*60)
 print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
+
+# تحميل البيانات من GitHub
+print("\n📁 تحميل بيانات المشتركين من GitHub...")
+initial_data = get_all_data()
+print(f"   ✅ تم تحميل {len(initial_data.get('subscriptions', {}))} مشترك")
+print(f"   ✅ {len(initial_data.get('pending_requests', {}))} طلب معلق")
 
 print("\n📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
@@ -785,8 +839,6 @@ GRAMMAR_RULES = load_grammar_rules()
 
 print("\n📚 تحميل الاختبارات...")
 TESTS = load_tests()
-
-init_db()
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
@@ -803,6 +855,7 @@ print(f"📖 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"📚 القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"📝 الاختبارات: {len(TESTS)} اختبار")
+print(f"👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
 print("="*60)
 print("✅ البوت جاهز للعمل!")
 print("="*60)
@@ -943,7 +996,6 @@ def webhook():
                 send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
             return "OK"
         
-        # معالجة أزرار الصفحات
         parts = cb_data.split("_")
         if len(parts) >= 3 and (parts[0] == "student" or parts[0] == "activity"):
             if not check_and_deduct_request(user_id):
@@ -963,8 +1015,6 @@ def webhook():
                 
                 if action == "original" or action == "page":
                     content = format_text(page.get("content_original", ""))
-                    if not content or content == "لا يوجد محتوى":
-                        content = "⚠️ لا يوجد محتوى نصي في هذه الصفحة"
                     mode = "original"
                     edit_message(chat_id, msg_id, 
                                f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
@@ -975,18 +1025,14 @@ def webhook():
                     num_parts, translation_parts = format_translation(translation)
                     
                     if num_parts is None:
-                        # لا توجد ترجمة
                         edit_message(chat_id, msg_id, 
                                    f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
                                    get_page_buttons(book_type, page_num, "original", min_page, max_page))
                     else:
-                        # أرسل الأجزاء
                         mode = "translated"
-                        # أول جزء مع الأزرار
                         edit_message(chat_id, msg_id, 
                                    f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
                                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
-                        # الأجزاء المتبقية
                         for part in translation_parts[1:]:
                             send_message(chat_id, part)
                     
