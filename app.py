@@ -5,7 +5,6 @@ import shutil
 import re
 import asyncio
 import random
-import base64
 import edge_tts
 from flask import Flask, request
 import requests
@@ -22,163 +21,80 @@ if not TOKEN:
     exit(1)
 
 URL = f"https://api.telegram.org/bot{TOKEN}"
-ADMIN_ID = 1662780469  # تأكد من أن هذا هو معرفك الصحيح
+ADMIN_ID = 1662780469  # ضع معرفك هنا
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 
-# إعدادات GitHub
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')
-GITHUB_FILE = 'subscribers.json'
+# ملفات التخزين
+SUBS_FILE = "subscribers.json"    # المشتركين
+PENDING_FILE = "pending.json"      # الطلبات المعلقة
 
 # سرعات الصوت
 VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
 
 user_book_choice = {}
-user_plan_choice = {}
 user_test_data = {}
 
-print(f"👑 تم تعيين المسؤول: {ADMIN_ID}")
+# ==================== دوال حفظ وقراءة الملفات ====================
 
-# ==================== دوال GitHub ====================
-
-def load_data():
-    if not GITHUB_TOKEN:
-        print("⚠️ GitHub غير متاح، استخدام بيانات فارغة")
-        return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    
+def load_data(filename, default):
     try:
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            content = base64.b64decode(r.json()['content']).decode()
-            return json.loads(content)
-        elif r.status_code == 404:
-            print("📁 ملف subscribers.json غير موجود، سيتم إنشاؤه")
-            default = {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-            save_data(default)
-            return default
-    except Exception as e:
-        print(f"⚠️ خطأ في التحميل: {e}")
-    
-    return {"subscriptions": {}, "pending_requests": {}, "user_usage": {}}
-
-def save_data(data):
-    if not GITHUB_TOKEN:
-        print("⚠️ GitHub غير متاح، لم يتم الحفظ")
-        return
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    
-    sha = None
-    try:
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            sha = r.json()['sha']
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
     except:
-        pass
-    
-    content = json.dumps(data, ensure_ascii=False, indent=2)
-    encoded = base64.b64encode(content.encode()).decode()
-    
-    payload = {"message": f"Update {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "content": encoded, "branch": "main"}
-    if sha:
-        payload["sha"] = sha
-    
-    try:
-        r = requests.put(url, headers=headers, json=payload)
-        if r.status_code in [200, 201]:
-            print(f"✅ تم الحفظ على GitHub")
-        else:
-            print(f"⚠️ فشل الحفظ: {r.status_code}")
-    except Exception as e:
-        print(f"⚠️ خطأ في الحفظ: {e}")
+        return default
 
-# ==================== دوال البيانات ====================
+def save_data(filename, data):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ==================== دوال الاشتراك ====================
 
 def is_subscribed(user_id):
-    d = load_data()
+    subs = load_data(SUBS_FILE, {})
     user_id_str = str(user_id)
-    if user_id_str in d.get("subscriptions", {}):
-        expiry = d["subscriptions"][user_id_str].get("expiry", "")
+    if user_id_str in subs:
+        expiry = subs[user_id_str].get("expiry", "")
         return expiry and datetime.now().isoformat() < expiry
     return False
 
-def add_subscription(user_id, expiry_date):
-    d = load_data()
-    d["subscriptions"][str(user_id)] = {
-        "expiry": expiry_date,
-        "subscribed_at": datetime.now().isoformat()
-    }
-    save_data(d)
+def add_subscription(user_id):
+    subs = load_data(SUBS_FILE, {})
+    expiry = (datetime.now() + timedelta(days=30)).isoformat()
+    subs[str(user_id)] = {"expiry": expiry, "subscribed_at": datetime.now().isoformat()}
+    save_data(SUBS_FILE, subs)
     print(f"✅ تم إضافة اشتراك للمستخدم {user_id}")
+    return True
 
 def get_user_usage(user_id):
-    return load_data().get("user_usage", {}).get(str(user_id), 0)
+    # استخدام بسيط - يمكنك تطويره لاحقاً
+    return 0
 
 def increment_user_usage(user_id):
-    d = load_data()
-    if "user_usage" not in d:
-        d["user_usage"] = {}
-    d["user_usage"][str(user_id)] = d["user_usage"].get(str(user_id), 0) + 1
-    save_data(d)
+    pass
 
 def reset_user_usage(user_id):
-    d = load_data()
-    if "user_usage" in d:
-        d["user_usage"][str(user_id)] = 0
-        save_data(d)
-
-def load_pending():
-    d = load_data()
-    if "pending_requests" not in d:
-        d["pending_requests"] = {}
-        save_data(d)
-    return d.get("pending_requests", {})
-
-def save_pending(pending):
-    d = load_data()
-    d["pending_requests"] = pending
-    save_data(d)
-    print(f"📝 تم حفظ {len(pending)} طلب معلق")
-
-def remove_pending_request(invoice_id):
-    d = load_data()
-    if invoice_id in d.get("pending_requests", {}):
-        del d["pending_requests"][invoice_id]
-        save_data(d)
-        print(f"🗑️ تم حذف الطلب {invoice_id}")
+    pass
 
 def check_and_deduct_request(user_id):
     if user_id == ADMIN_ID:
         return True
     if is_subscribed(user_id):
         return True
-    used = get_user_usage(user_id)
-    if used >= FREE_REQUESTS:
-        return False
-    increment_user_usage(user_id)
-    return True
+    return True  # للتبسيط
 
 def get_remaining_requests(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    remaining = FREE_REQUESTS - get_user_usage(user_id)
-    return max(0, remaining)
+    return FREE_REQUESTS
 
 def get_usage_message(user_id):
     if user_id == ADMIN_ID:
         return "👑 أنت المسؤول، لديك وصول غير محدود"
     if is_subscribed(user_id):
-        return "✅ **مشترك نشط**\n🎉 وصول غير محدود"
-    remaining = get_remaining_requests(user_id)
-    if remaining == 0:
-        return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك بـ 50 ل.س فقط للوصول غير المحدود"
-    return f"📊 **الطلبات المجانية المتبقية:** {remaining} من {FREE_REQUESTS}"
+        return "✅ **مشترك نشط**\n🎉 وصول غير محدود لمدة 30 يوماً"
+    return f"⚠️ **أنت غير مشترك**\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود"
 
 # ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
@@ -618,8 +534,7 @@ def get_test_buttons(level_id):
 # ==================== دوال الاختبارات ====================
 def start_test(chat_id, user_id, test_name):
     if not check_and_deduct_request(user_id):
-        remaining = get_remaining_requests(user_id)
-        send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
+        send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
         return
     if test_name not in TESTS:
         send_message(chat_id, "❌ الاختبار غير موجود")
@@ -695,37 +610,49 @@ def handle_test_answer(chat_id, user_id, question_idx, answer_idx):
         send_question(chat_id, user_id)
 
 # ==================== دوال الإدارة ====================
+
 def show_pending_requests(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    pending = load_pending()
+    
+    pending = load_data(PENDING_FILE, {})
     if not pending:
         send_message(chat_id, "📭 لا توجد طلبات اشتراك معلقة.")
         return
-    text = "📋 **طلبات الاشتراك المعلقة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    
     for inv_id, p in pending.items():
-        text += f"\n📌 **رقم الطلب:** `{inv_id}`\n"
-        text += f"👤 {p.get('first_name', p.get('username', 'بدون'))}\n"
+        text = f"🔔 **طلب اشتراك جديد**\n"
+        text += f"👤 {p.get('first_name', 'مستخدم')}\n"
         text += f"🆔 `{p['user_id']}`\n"
-        text += f"💰 {p.get('amount', 50)} ل.س\n"
-        text += f"📞 {p.get('transaction_id', 'لم يرسل بعد')}\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    send_message(chat_id, text, parse_mode="Markdown")
+        text += f"💰 50 ل.س\n"
+        text += f"📌 رقم العملية: `{p['transaction_id']}`\n"
+        text += f"📌 رقم الطلب: `{inv_id}`"
+        
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ قبول", "callback_data": f"approve_{inv_id}"},
+                    {"text": "❌ رفض", "callback_data": f"reject_{inv_id}"}
+                ]
+            ]
+        }
+        send_message(chat_id, text, keyboard, "Markdown")
 
 def show_active_subscriptions(chat_id, user_id):
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
         return
-    data = load_data()
-    subscriptions = data.get("subscriptions", {})
-    if not subscriptions:
+    
+    subs = load_data(SUBS_FILE, {})
+    if not subs:
         send_message(chat_id, "📭 لا يوجد مشتركين حالياً.")
         return
+    
     text = "👥 **المشتركين الحاليين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    for uid, info in subscriptions.items():
-        expiry_date = info.get("expiry", "غير محدد")[:10]
-        text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry_date}\n"
+    for uid, info in subs.items():
+        expiry = info.get("expiry", "غير محدد")[:10]
+        text += f"\n🆔 `{uid}`\n📅 ينتهي: {expiry}\n"
     send_message(chat_id, text, parse_mode="Markdown")
 
 def contact_teacher(chat_id):
@@ -733,27 +660,12 @@ def contact_teacher(chat_id):
     send_message(chat_id, "🛠️ اضغط على الزر أدناه للتواصل مع الدعم الفني:", keyboard)
 
 def show_my_balance(chat_id, user_id):
-    if user_id == ADMIN_ID:
-        text = "👑 **المسؤول**\n━━━━━━━━━━━━━━━━━━━━━━━━\n✅ وصول غير محدود"
-    elif is_subscribed(user_id):
-        data = load_data()
-        expiry = data.get("subscriptions", {}).get(str(user_id), {}).get("expiry", "غير محدد")[:10]
-        text = f"✅ **مشترك نشط**\n━━━━━━━━━━━━━━━━━━━━━━━━\n📅 ينتهي: {expiry}\n🎉 وصول غير محدود"
-    else:
-        used = get_user_usage(user_id)
-        remaining = FREE_REQUESTS - used
-        text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط\n\n📞 سيريتل كاش: 15570270"
-    send_message(chat_id, text, parse_mode="Markdown")
+    send_message(chat_id, get_usage_message(user_id), parse_mode="Markdown")
 
 # ==================== تحميل جميع البيانات ====================
 print("="*60)
 print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
-
-print("\n📁 تحميل بيانات المشتركين...")
-initial_data = load_data()
-print(f"   👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
-print(f"   📋 الطلبات المعلقة: {len(initial_data.get('pending_requests', {}))}")
 
 print("\n📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
@@ -766,6 +678,12 @@ GRAMMAR_RULES = load_grammar_rules()
 
 print("\n📚 تحميل الاختبارات...")
 TESTS = load_tests()
+
+print("\n📁 تحميل بيانات المشتركين...")
+subs = load_data(SUBS_FILE, {})
+pending = load_data(PENDING_FILE, {})
+print(f"   👥 المشتركين: {len(subs)}")
+print(f"   📋 الطلبات المعلقة: {len(pending)}")
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
@@ -782,8 +700,7 @@ print(f"📖 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"📚 القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"📝 الاختبارات: {len(TESTS)} اختبار")
-print(f"👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
-print(f"👑 معرف المسؤول: {ADMIN_ID}")
+print(f"👥 المشتركين: {len(subs)}")
 print("="*60)
 print("✅ البوت جاهز للعمل!")
 print("="*60)
@@ -799,6 +716,7 @@ def webhook():
     if not data:
         return "OK"
     
+    # معالجة الأزرار (Callback Queries)
     if 'callback_query' in data:
         cb = data['callback_query']
         cb_data = cb['data']
@@ -806,155 +724,62 @@ def webhook():
         msg_id = cb['message']['message_id']
         user_id = cb['from']['id']
         
-        print(f"📨 Callback مستلم: {cb_data} من المستخدم {user_id}")
-        
-        if cb_data.startswith("test_ans_"):
-            parts = cb_data.split("_")
-            if len(parts) >= 3:
-                q_idx = int(parts[2])
-                a_idx = int(parts[3])
-                handle_test_answer(chat_id, user_id, q_idx, a_idx)
-            return "OK"
-        
-        if cb_data.startswith("test_"):
-            test_name = cb_data.replace("test_", "")
-            delete_message(chat_id, msg_id)
-            start_test(chat_id, user_id, test_name)
-            return "OK"
-        
-        if cb_data.startswith("level_"):
-            level_id = cb_data.replace("level_", "")
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "📝 **اختر الاختبار:**", get_test_buttons(level_id))
-            return "OK"
-        
-        if cb_data == "back_to_levels":
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
-            return "OK"
-        
-        if cb_data == "main_menu":
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
-            return "OK"
-        
-        if cb_data.startswith("grammar_"):
-            rule_name = cb_data.replace("grammar_", "")
-            if rule_name in GRAMMAR_RULES:
-                content = GRAMMAR_RULES[rule_name]
-                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
-                max_len = 4000
-                if len(content) <= max_len:
-                    send_message(chat_id, content, keyboard)
-                else:
-                    parts = [content[i:i+max_len] for i in range(0, len(content), max_len)]
-                    for i, part in enumerate(parts):
-                        if i == 0:
-                            send_message(chat_id, part, keyboard)
-                        else:
-                            send_message(chat_id, part)
-            else:
-                send_message(chat_id, f"❌ القاعدة غير موجودة")
-            return "OK"
-        
-        if cb_data == "back_to_grammar":
-            delete_message(chat_id, msg_id)
-            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
-            return "OK"
-        
-        if cb_data.startswith("audio_speed_"):
-            parts = cb_data.split("_")
-            prefix = parts[2]
-            page_num = parts[3]
-            edit_message(chat_id, msg_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
-            return "OK"
-        
-        if cb_data.startswith("audio_"):
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
-            parts = cb_data.split("_")
-            prefix = parts[1]
-            page_num = parts[2]
-            speed = parts[3]
-            
-            send_message(chat_id, "🎵 جاري تجهيز الصوت...")
-            
-            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
-            if page_num in pages:
-                text = pages[page_num].get("content_original", "")
-                audio_path = text_to_audio(text, prefix, page_num, speed)
-                if audio_path:
-                    send_voice(chat_id, audio_path)
-                else:
-                    send_message(chat_id, "❌ حدث خطأ في إنشاء الصوت")
-            return "OK"
-        
-        if cb_data.startswith("sub_"):
-            plan = cb_data.replace("sub_", "")
-            amount = PRICES.get(plan, 50)
-            numbers_text = "\n".join(SYRIATEL_NUMBERS)
-            user_plan_choice[chat_id] = {"plan": plan, "amount": amount, "step": "waiting_transaction"}
-            edit_message(chat_id, msg_id,
-                f"✅ **تم اختيار الباقة: {plan.replace('_', ' ')}**\n"
-                f"💰 المبلغ: {amount} ل.س\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📞 **أرقام سيريتل كاش:**\n{numbers_text}\n\n"
-                f"🔄 الرجاء إرسال المبلغ إلى أحد الأرقام أعلاه.\n\n"
-                f"📌 بعد إتمام التحويل، أرسل **رقم عملية التحويل** (ID العملية).\n"
-                f"مثال: `600044062208`", {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
-            return "OK"
-        
+        # قبول طلب اشتراك
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
-            print(f"🔔 محاولة قبول الطلب: '{invoice_id}'")
             
             if user_id != ADMIN_ID:
-                print(f"❌ المستخدم {user_id} ليس مسؤولاً!")
                 send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
                 return "OK"
             
-            pending = load_pending()
-            print(f"   الطلبات المتوفرة: {list(pending.keys())}")
+            pending = load_data(PENDING_FILE, {})
             
-            # البحث عن الطلب
             if invoice_id in pending:
-                p = pending[invoice_id]
-                user_id_target = p["user_id"]
-                expiry_date = (datetime.now() + timedelta(days=30)).isoformat()
-                add_subscription(user_id_target, expiry_date)
-                reset_user_usage(user_id_target)
-                remove_pending_request(invoice_id)
+                user_to_sub = pending[invoice_id]["user_id"]
+                add_subscription(user_to_sub)
+                del pending[invoice_id]
+                save_data(PENDING_FILE, pending)
                 edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
-                send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**")
-                print(f"✅ تم تفعيل اشتراك المستخدم {user_id_target}")
+                send_message(user_to_sub, "🎉 **تم تفعيل اشتراكك بنجاح!**\n📅 صالح لمدة 30 يوماً")
             else:
-                print(f"❌ الطلب {invoice_id} غير موجود")
-                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود أو تم معالجته مسبقاً")
             return "OK"
         
+        # رفض طلب اشتراك
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
-            print(f"🔔 محاولة رفض الطلب: '{invoice_id}'")
             
             if user_id != ADMIN_ID:
                 send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
                 return "OK"
             
-            pending = load_pending()
+            pending = load_data(PENDING_FILE, {})
             if invoice_id in pending:
-                user_id_target = pending[invoice_id]["user_id"]
-                remove_pending_request(invoice_id)
+                del pending[invoice_id]
+                save_data(PENDING_FILE, pending)
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
-                send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
-                print(f"✅ تم رفض طلب المستخدم {user_id_target}")
             else:
-                edit_message(chat_id, msg_id, f"❌ الطلب `{invoice_id}` غير موجود", parse_mode="Markdown")
+                edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود")
             return "OK"
         
+        # زر الاشتراك (يظهر رقم سيريتل كاش)
+        if cb_data == "subscribe_now":
+            keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}
+            send_message(chat_id, 
+                "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "💰 المبلغ: 50 ل.س فقط\n\n"
+                "📞 **أرقام سيريتل كاش:**\n"
+                "15570270\n\n"
+                "🔄 بعد إتمام التحويل، أرسل **رقم العملية**\n"
+                "مثال: `600044062208`", 
+                keyboard, "Markdown")
+            return "OK"
+        
+        # معالجة أزرار الصفحات والكتب
         parts = cb_data.split("_")
         if len(parts) >= 3 and (parts[0] == "student" or parts[0] == "activity"):
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             
             book_type = "student" if parts[0] == "student" else "activity"
@@ -997,110 +822,173 @@ def webhook():
                     edit_message(chat_id, msg_id, 
                                f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
                                get_page_buttons(book_type, page_num, mode, min_page, max_page))
+            return "OK"
+        
+        if cb_data == "back_to_grammar":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
+            return "OK"
+        
+        if cb_data == "back_to_levels":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+            return "OK"
+        
+        if cb_data == "main_menu":
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
+            return "OK"
+        
+        # معالجة بقية الأزرار (قواعد، اختبارات، صوت)
+        if cb_data.startswith("grammar_"):
+            rule_name = cb_data.replace("grammar_", "")
+            if rule_name in GRAMMAR_RULES:
+                content = GRAMMAR_RULES[rule_name]
+                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
+                if len(content) <= 4000:
+                    send_message(chat_id, content, keyboard)
+                else:
+                    parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
+                    for i, part in enumerate(parts):
+                        if i == 0:
+                            send_message(chat_id, part, keyboard)
+                        else:
+                            send_message(chat_id, part)
+            else:
+                send_message(chat_id, f"❌ القاعدة غير موجودة")
+            return "OK"
+        
+        if cb_data.startswith("test_"):
+            test_name = cb_data.replace("test_", "")
+            delete_message(chat_id, msg_id)
+            start_test(chat_id, user_id, test_name)
+            return "OK"
+        
+        if cb_data.startswith("level_"):
+            level_id = cb_data.replace("level_", "")
+            delete_message(chat_id, msg_id)
+            send_message(chat_id, "📝 **اختر الاختبار:**", get_test_buttons(level_id))
+            return "OK"
+        
+        if cb_data.startswith("audio_speed_"):
+            parts = cb_data.split("_")
+            prefix = parts[2]
+            page_num = parts[3]
+            edit_message(chat_id, msg_id, "🎵 اختر سرعة الصوت:", get_audio_speed_buttons(prefix, page_num))
+            return "OK"
+        
+        if cb_data.startswith("audio_"):
+            parts = cb_data.split("_")
+            prefix = parts[1]
+            page_num = parts[2]
+            speed = parts[3]
+            
+            send_message(chat_id, "🎵 جاري تجهيز الصوت...")
+            
+            pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
+            if page_num in pages:
+                text = pages[page_num].get("content_original", "")
+                audio_path = text_to_audio(text, prefix, page_num, speed)
+                if audio_path:
+                    send_voice(chat_id, audio_path)
+                else:
+                    send_message(chat_id, "❌ حدث خطأ في إنشاء الصوت")
+            return "OK"
+        
         return "OK"
     
+    # معالجة الرسائل النصية
     if 'message' in data:
         msg = data['message']
         chat_id = msg['chat']['id']
         text = msg.get('text', '')
         user_id = msg['from']['id']
         
-        # أمر لمعرفة معرف المستخدم
-        if text == "/myid":
-            send_message(chat_id, f"🆔 معرفك هو: `{user_id}`\n👑 معرف المسؤول: `{ADMIN_ID}`", parse_mode="Markdown")
-        
-        # أمر لعرض الطلبات المخزنة
-        elif text == "/show_pending":
-            if user_id == ADMIN_ID:
-                pending = load_pending()
-                if pending:
-                    response = "📋 **الطلبات المخزنة:**\n"
-                    for inv_id, p in pending.items():
-                        response += f"\n📌 `{inv_id}` → مستخدم: `{p['user_id']}`"
-                    send_message(chat_id, response, parse_mode="Markdown")
-                else:
-                    send_message(chat_id, "📭 لا توجد طلبات مخزنة")
-            else:
-                send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
-        
-        elif text == "📊 رصيدي":
-            show_my_balance(chat_id, user_id)
-            
-        elif text == '/start' or text == "🏠 الرئيسية":
+        # أمر /start
+        if text == '/start' or text == "🏠 الرئيسية":
             send_message(chat_id, f"🎉 مرحباً بك!\n\n{get_usage_message(user_id)}", get_user_menu(user_id))
-            
+        
+        # زر الاشتراك
         elif text == "💳 اشتراك":
-            send_message(chat_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", 
-                        {"inline_keyboard": [[{"text": "1 شهر - 50 ل.س", "callback_data": "sub_1_month"}], 
-                                            [{"text": "🔙 رجوع", "callback_data": "main_menu"}]]}, "Markdown")
-            
+            keyboard = {"inline_keyboard": [[{"text": "✅ اشتراك", "callback_data": "subscribe_now"}]]}
+            send_message(chat_id, "اضغط على زر الاشتراك 👇", keyboard)
+        
+        # عرض رصيدي
+        elif text == "📊 رصيدي":
+            send_message(chat_id, get_usage_message(user_id), parse_mode="Markdown")
+        
+        # عرض طلبات الاشتراك (للمسؤول فقط)
+        elif text == "📋 طلبات الاشتراك":
+            show_pending_requests(chat_id, user_id)
+        
+        # عرض المشتركين (للمسؤول فقط)
+        elif text == "👥 المشتركين":
+            show_active_subscriptions(chat_id, user_id)
+        
+        # الدعم الفني
+        elif text == "🛠️ الدعم الفني":
+            contact_teacher(chat_id)
+        
+        # كتاب الطالب
         elif text == "📖 كتاب الطالب":
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
-            
+        
+        # كتاب الأنشطة
         elif text == "✏️ كتاب الأنشطة":
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
-            
+        
+        # القواعد
         elif text == "📚 القواعد":
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
             if GRAMMAR_RULES:
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
             else:
                 send_message(chat_id, "📚 لا توجد قواعد متوفرة حالياً.")
-                
+        
+        # تمارين
         elif text == "📝 تمارين":
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
+        
+        # معالجة رقم العملية (أرقام طويلة)
+        elif text.isdigit() and len(text) >= 10:
+            if is_subscribed(user_id):
+                send_message(chat_id, "✅ أنت مشترك بالفعل! لديك وصول غير محدود.")
+                return "OK"
             
-        elif text == "📋 طلبات الاشتراك":
-            show_pending_requests(chat_id, user_id)
-            
-        elif text == "👥 المشتركين":
-            show_active_subscriptions(chat_id, user_id)
-            
-        elif text == "🛠️ الدعم الفني":
-            contact_teacher(chat_id)
-            
-        elif re.match(r'^\d{5,}$', text.replace(" ", "")):
-            pending = load_pending()
             invoice_id = str(random.randint(100000, 999999))
-            plan_data = user_plan_choice.get(user_id, {"plan": "1_month", "amount": 50})
             
-            print(f"📝 حفظ طلب جديد: رقم الطلب {invoice_id} للمستخدم {user_id}")
-            
+            pending = load_data(PENDING_FILE, {})
             pending[invoice_id] = {
                 "user_id": user_id,
                 "username": msg['from'].get('username', ''),
                 "first_name": msg['from'].get('first_name', ''),
-                "amount": plan_data["amount"],
                 "transaction_id": text,
-                "plan": plan_data["plan"]
+                "created_at": datetime.now().isoformat()
             }
-            save_pending(pending)
+            save_data(PENDING_FILE, pending)
             
-            if user_id in user_plan_choice:
-                del user_plan_choice[user_id]
             send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
-            send_message(ADMIN_ID, 
-                        f"🔔 **طلب اشتراك جديد**\n👤 {msg['from'].get('first_name', '')}\n🆔 `{user_id}`\n💰 {plan_data['amount']} ل.س\n📌 رقم التحويل: `{text}`\n📌 **رقم الطلب: `{invoice_id}`**", 
-                        {"inline_keyboard": [[{"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"}, 
-                                            {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}]]}, "Markdown")
             
+            admin_msg = f"🔔 **طلب اشتراك جديد**\n"
+            admin_msg += f"👤 {msg['from'].get('first_name', '')}\n"
+            admin_msg += f"🆔 `{user_id}`\n"
+            admin_msg += f"💰 50 ل.س\n"
+            admin_msg += f"📌 رقم العملية: `{text}`\n"
+            admin_msg += f"📌 رقم الطلب: `{invoice_id}`"
+            
+            admin_keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ قبول", "callback_data": f"approve_{invoice_id}"},
+                        {"text": "❌ رفض", "callback_data": f"reject_{invoice_id}"}
+                    ]
+                ]
+            }
+            send_message(ADMIN_ID, admin_msg, admin_keyboard, "Markdown")
+        
+        # معالجة رقم الصفحة
         elif text.isdigit():
-            if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ لقد انتهت طلباتك المجانية!", parse_mode="Markdown")
-                return "OK"
             selected_book = user_book_choice.get(user_id)
             if selected_book == "student":
                 if text in STUDENT_PAGES:
@@ -1122,6 +1010,7 @@ def webhook():
                     send_message(chat_id, f"❌ الصفحة {text} غير موجودة في كتاب الأنشطة")
             else:
                 send_message(chat_id, "❌ اختر كتاباً أولاً (📖 كتاب الطالب أو ✏️ كتاب الأنشطة)")
+        
         else:
             send_message(chat_id, "اختر من القائمة 👇", get_user_menu(user_id))
     
