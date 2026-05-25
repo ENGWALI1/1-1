@@ -155,7 +155,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
         data["reply_markup"] = reply_markup
     if parse_mode:
         data["parse_mode"] = parse_mode
-    requests.post(URL + "/sendMessage", json=data)
+    return requests.post(URL + "/sendMessage", json=data)
 
 def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "message_id": message_id, "text": text, "protect_content": True}
@@ -163,7 +163,7 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
         data["reply_markup"] = reply_markup
     if parse_mode:
         data["parse_mode"] = parse_mode
-    requests.post(URL + "/editMessageText", json=data)
+    return requests.post(URL + "/editMessageText", json=data)
 
 def delete_message(chat_id, message_id):
     requests.post(URL + "/deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
@@ -679,14 +679,35 @@ def webhook():
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
         
+        # ==================== عرض القواعد مع تقسيم النص الطويل ====================
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
+            
+            # كود تشخيصي
+            print(f"🔍 طلب قاعدة: {rule_name}")
+            print(f"📚 القواعد المتوفرة: {list(GRAMMAR_RULES.keys())}")
+            
             if rule_name in GRAMMAR_RULES:
                 content = GRAMMAR_RULES[rule_name]
+                print(f"✅ القاعدة موجودة، طول النص: {len(content)}")
+                
                 keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
-                send_message(chat_id, content, keyboard)
+                
+                # تقسيم النص الطويل (أكثر من 4000 حرف)
+                max_len = 4000
+                if len(content) <= max_len:
+                    send_message(chat_id, content, keyboard)
+                else:
+                    parts = [content[i:i+max_len] for i in range(0, len(content), max_len)]
+                    for i, part in enumerate(parts):
+                        if i == 0:
+                            send_message(chat_id, part, keyboard)
+                        else:
+                            send_message(chat_id, part)
             else:
-                send_message(chat_id, "❌ القاعدة غير موجودة")
+                print(f"❌ القاعدة {rule_name} غير موجودة")
+                send_message(chat_id, f"❌ القاعدة غير موجودة\n\nالقواعد المتوفرة: {', '.join(list(GRAMMAR_RULES.keys())[:10])}")
+            
             return "OK"
         
         if cb_data == "back_to_grammar":
