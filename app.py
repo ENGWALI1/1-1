@@ -748,6 +748,9 @@ def webhook():
             delete_message(chat_id, msg_id)
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
+
+
+
         
         if cb_data.startswith("grammar_"):
     rule_name = cb_data.replace("grammar_", "")
