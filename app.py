@@ -655,6 +655,19 @@ def show_my_balance(chat_id, user_id):
         text = f"📊 **رصيد الطلبات المجانية**\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎟️ المتبقي: {remaining} من {FREE_REQUESTS}\n\n💳 اشترك الآن بـ 50 ل.س فقط\n\n📞 سيريتل كاش: 15570270"
     send_message(chat_id, text, parse_mode="Markdown")
 
+@app.route('/check_grammar_details')
+def check_grammar_details():
+    if not is_subscribed(ADMIN_ID):
+        return "غير مصرح", 403
+    
+    result = "📚 **تفاصيل القواعد:**\n\n"
+    
+    for name, content in GRAMMAR_RULES.items():
+        status = "✅" if content and len(content) > 50 else "❌"
+        length = len(content) if content else 0
+        result += f"{status} {name} - {length} حرف\n"
+    
+    return result, 200
 # ==================== معالج Webhook ====================
 @app.route('/')
 def home():
