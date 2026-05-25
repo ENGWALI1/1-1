@@ -26,10 +26,8 @@ ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
-
-# إعدادات GitHub - غير هذه القيم حسب حسابك
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', 'ENGWALI1/ENGWALI1')  # غير هذا إلى اسم_المستخدم/اسم_المستودع
+GITHUB_TOKEN = os.environ.get('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')
+GITHUB_REPO = os.environ.get('withali91_bot')  # غير هذا إلى اسم_المستخدم/اسم_المستودع
 GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
