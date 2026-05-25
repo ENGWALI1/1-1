@@ -657,16 +657,18 @@ def show_my_balance(chat_id, user_id):
 
 @app.route('/check_grammar_details')
 def check_grammar_details():
-    if not is_subscribed(ADMIN_ID):
-        return "غير مصرح", 403
-    
+    # نزيل شرط التحقق من الاشتراك مؤقتاً
+    # if not is_subscribed(ADMIN_ID):
+    #     return "غير مصرح", 403
+
     result = "📚 **تفاصيل القواعد:**\n\n"
-    
+
     for name, content in GRAMMAR_RULES.items():
+        # نفحص أن المحتوى موجود وطوله معقول
         status = "✅" if content and len(content) > 50 else "❌"
         length = len(content) if content else 0
         result += f"{status} {name} - {length} حرف\n"
-    
+
     return result, 200
 # ==================== معالج Webhook ====================
 @app.route('/')
