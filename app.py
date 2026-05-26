@@ -26,11 +26,11 @@ URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50, "3_months": 100, "6_months": 150}
-FREE_REQUESTS = 10
+FREE_REQUESTS = 10  # عدد الطلبات المجانية لغير المشتركين
 
 # إعدادات GitHub
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'ENGWALI1/1-1')
 GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
@@ -46,7 +46,7 @@ def load_data_from_github():
     """تحميل البيانات من GitHub"""
     if not GITHUB_TOKEN:
         print("⚠️ GITHUB_TOKEN غير موجود")
-        return {"subs": {}, "pending": {}}
+        return {"subs": {}, "pending": {}, "usage": {}}
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
@@ -57,16 +57,19 @@ def load_data_from_github():
             content = response.json().get('content', '')
             if content:
                 decoded = base64.b64decode(content).decode('utf-8')
-                return json.loads(decoded)
+                data = json.loads(decoded)
+                if "usage" not in data:
+                    data["usage"] = {}
+                return data
         elif response.status_code == 404:
             print("📁 ملف subscribers.json غير موجود، سيتم إنشاؤه")
-            default = {"subs": {}, "pending": {}}
+            default = {"subs": {}, "pending": {}, "usage": {}}
             save_data_to_github(default)
             return default
     except Exception as e:
         print(f"⚠️ خطأ في التحميل: {e}")
     
-    return {"subs": {}, "pending": {}}
+    return {"subs": {}, "pending": {}, "usage": {}}
 
 def save_data_to_github(data):
     """حفظ البيانات إلى GitHub"""
@@ -204,33 +207,53 @@ def reject_request(invoice_id):
         return True, user_id
     return False, None
 
+# ==================== نظام الطلبات المجانية ====================
+
 def get_user_usage(user_id):
-    return 0  # نظام الاستخدام المجاني تمت إزالته لصالح الاشتراك فقط
+    data = load_data_from_github()
+    return data.get("usage", {}).get(str(user_id), 0)
 
 def increment_user_usage(user_id):
-    pass
+    data = load_data_from_github()
+    if "usage" not in data:
+        data["usage"] = {}
+    data["usage"][str(user_id)] = data["usage"].get(str(user_id), 0) + 1
+    save_data_to_github(data)
 
 def reset_user_usage(user_id):
-    pass
+    data = load_data_from_github()
+    if "usage" in data:
+        data["usage"][str(user_id)] = 0
+        save_data_to_github(data)
 
 def check_and_deduct_request(user_id):
+    """التحقق من وجود طلبات مجانية للمستخدم غير المشترك"""
     if user_id == ADMIN_ID:
         return True
     if is_subscribed(user_id):
         return True
-    return False
+    used = get_user_usage(user_id)
+    if used >= FREE_REQUESTS:
+        return False
+    increment_user_usage(user_id)
+    return True
 
 def get_remaining_requests(user_id):
     if user_id == ADMIN_ID or is_subscribed(user_id):
         return "غير محدود"
-    return 0
+    used = get_user_usage(user_id)
+    remaining = FREE_REQUESTS - used
+    return max(0, remaining)
 
 def get_usage_message(user_id):
     if user_id == ADMIN_ID:
         return "👑 أنت المسؤول، لديك وصول غير محدود"
     if is_subscribed(user_id):
         return "✅ **مشترك نشط**\n🎉 وصول غير محدود"
-    return f"⚠️ **أنت غير مشترك**\n💳 اشترك الآن للوصول إلى جميع المحتويات"
+    remaining = get_remaining_requests(user_id)
+    if remaining == 0:
+        return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك الآن بـ 50 ل.س فقط للوصول غير المحدود"
+    return f"📊 **الطلبات المجانية المتبقية:** {remaining} من {FREE_REQUESTS}"
 
 # ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
@@ -258,12 +281,43 @@ def send_voice(chat_id, voice_path):
         data = {"chat_id": chat_id, "protect_content": True}
         return requests.post(URL + "/sendVoice", files=files, data=data)
 
-async def send_voice_async(chat_id, voice_path):
-    """نسخة غير متزامنة لإرسال الصوت"""
-    with open(voice_path, 'rb') as audio:
-        files = {'voice': audio}
-        data = {"chat_id": chat_id, "protect_content": True}
-        return requests.post(URL + "/sendVoice", files=files, data=data)
+async def text_to_audio(text, book_type, page_num, speed="عادي"):
+    audio_dir = "audio"
+    os.makedirs(audio_dir, exist_ok=True)
+    
+    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
+    clean_text = clean_text.replace('━', '').replace('**', '').replace('|', '')
+    clean_text = re.sub(r'\s+', ' ', clean_text)
+    
+    lines = clean_text.split('\n')
+    english_parts = []
+    for line in lines:
+        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
+        total_chars = len(line.strip())
+        if total_chars > 0:
+            arabic_ratio = arabic_chars / total_chars
+            if arabic_ratio < 0.5:
+                english_parts.append(line)
+    
+    clean_text = ' '.join(english_parts)
+    
+    if not clean_text or len(clean_text.strip()) < 10:
+        clean_text = f"Page {page_num} of {book_type} book."
+    
+    rate = VOICE_RATES.get(speed, "-15%")
+    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
+    audio_path = os.path.join(audio_dir, audio_filename)
+    
+    if os.path.exists(audio_path):
+        return audio_path
+    
+    try:
+        communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural", rate=rate)
+        await communicate.save(audio_path)
+        return audio_path
+    except Exception as e:
+        print(f"خطأ في الصوت: {e}")
+        return None
 
 # ==================== القوائم ====================
 unsubscribed_menu = {
@@ -591,45 +645,6 @@ def format_exercises(exercises):
     
     return result
 
-# ==================== دالة الصوت ====================
-async def text_to_audio(text, book_type, page_num, speed="عادي"):
-    audio_dir = "audio"
-    os.makedirs(audio_dir, exist_ok=True)
-    
-    clean_text = text.replace('*', '').replace('_', '').replace('`', '')
-    clean_text = clean_text.replace('━', '').replace('**', '').replace('|', '')
-    clean_text = re.sub(r'\s+', ' ', clean_text)
-    
-    lines = clean_text.split('\n')
-    english_parts = []
-    for line in lines:
-        arabic_chars = sum(1 for c in line if '\u0600' <= c <= '\u06FF')
-        total_chars = len(line.strip())
-        if total_chars > 0:
-            arabic_ratio = arabic_chars / total_chars
-            if arabic_ratio < 0.5:
-                english_parts.append(line)
-    
-    clean_text = ' '.join(english_parts)
-    
-    if not clean_text or len(clean_text.strip()) < 10:
-        clean_text = f"Page {page_num} of {book_type} book."
-    
-    rate = VOICE_RATES.get(speed, "-15%")
-    audio_filename = f"{book_type}_{page_num}_{speed}.mp3"
-    audio_path = os.path.join(audio_dir, audio_filename)
-    
-    if os.path.exists(audio_path):
-        return audio_path
-    
-    try:
-        communicate = edge_tts.Communicate(clean_text[:3000], "en-US-JennyNeural", rate=rate)
-        await communicate.save(audio_path)
-        return audio_path
-    except Exception as e:
-        print(f"خطأ في الصوت: {e}")
-        return None
-
 # ==================== دوال الأزرار ====================
 def get_page_buttons(book_type, page_num, mode, min_page, max_page):
     buttons = []
@@ -720,7 +735,8 @@ def get_subscription_buttons():
 # ==================== دوال الاختبارات ====================
 def start_test(chat_id, user_id, test_name):
     if not check_and_deduct_request(user_id):
-        send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع الاختبارات", parse_mode="Markdown")
+        remaining = get_remaining_requests(user_id)
+        send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
         return
     if test_name not in TESTS:
         send_message(chat_id, "❌ الاختبار غير موجود")
@@ -808,18 +824,7 @@ def show_pending_requests(chat_id, user_id):
         return
     
     plan_names = {"1_month": "شهر", "3_months": "3 أشهر", "6_months": "6 أشهر"}
-    text = "📋 **طلبات الاشتراك المعلقة**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     
-    for inv_id, p in pending.items():
-        text += f"\n📌 **رقم الطلب:** `{inv_id}`\n"
-        text += f"👤 {p.get('first_name', p.get('username', 'بدون'))}\n"
-        text += f"🆔 `{p['user_id']}`\n"
-        text += f"📦 {plan_names.get(p['plan'], p['plan'])}\n"
-        text += f"💰 {p['amount']} ل.س\n"
-        text += f"📞 `{p['transaction_id']}`\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    
-    # إرسال كل طلب على حدة مع أزرار
     for inv_id, p in pending.items():
         msg = f"🔔 **طلب اشتراك جديد**\n"
         msg += f"👤 {p.get('first_name', 'مستخدم')}\n"
@@ -910,6 +915,7 @@ print("\n📁 تحميل بيانات المشتركين من GitHub...")
 initial_data = load_data_from_github()
 print(f"   👥 المشتركين: {len(initial_data.get('subs', {}))}")
 print(f"   📋 الطلبات المعلقة: {len(initial_data.get('pending', {}))}")
+print(f"   📊 استخدامات المستخدمين: {len(initial_data.get('usage', {}))}")
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
@@ -953,15 +959,12 @@ def webhook():
         
         print(f"📨 Callback مستلم: {cb_data} من المستخدم {user_id}")
         
-        # ==================== معالجة الاشتراكات ====================
-        
-        # عرض باقات الاشتراك
+        # معالجة الاشتراكات
         if cb_data == "subscription_menu":
             keyboard = get_subscription_buttons()
             edit_message(chat_id, msg_id, "💳 **نظام الاشتراك**\n━━━━━━━━━━━━━━━━━━━━━━━━\nاختر الباقة المناسبة لك:", keyboard, "Markdown")
             return "OK"
         
-        # اختيار باقة
         if cb_data.startswith("sub_"):
             plan = cb_data.replace("sub_", "")
             amount = PRICES.get(plan, 50)
@@ -977,7 +980,6 @@ def webhook():
             edit_message(chat_id, msg_id, text, keyboard, "Markdown")
             return "OK"
         
-        # قبول طلب اشتراك
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             
@@ -996,7 +998,6 @@ def webhook():
                 edit_message(chat_id, msg_id, f"❌ الطلب {invoice_id} غير موجود أو تم معالجته مسبقاً", parse_mode="Markdown")
             return "OK"
         
-        # رفض طلب اشتراك
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
             
@@ -1014,8 +1015,7 @@ def webhook():
                 edit_message(chat_id, msg_id, f"❌ الطلب {invoice_id} غير موجود", parse_mode="Markdown")
             return "OK"
         
-        # ==================== معالجة بقية الأزرار ====================
-        
+        # معالجة الاختبارات
         if cb_data.startswith("test_ans_"):
             parts = cb_data.split("_")
             if len(parts) >= 3:
@@ -1078,7 +1078,8 @@ def webhook():
         
         if cb_data.startswith("audio_"):
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             parts = cb_data.split("_")
             prefix = parts[1]
@@ -1090,7 +1091,6 @@ def webhook():
             pages = STUDENT_PAGES if prefix == "student" else ACTIVITY_PAGES
             if page_num in pages:
                 text = pages[page_num].get("content_original", "")
-                import asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 audio_path = loop.run_until_complete(text_to_audio(text, prefix, page_num, speed))
@@ -1105,7 +1105,8 @@ def webhook():
         parts = cb_data.split("_")
         if len(parts) >= 3 and (parts[0] == "student" or parts[0] == "activity"):
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             
             book_type = "student" if parts[0] == "student" else "activity"
@@ -1185,7 +1186,8 @@ def webhook():
         # كتاب الطالب
         elif text == "📖 كتاب الطالب":
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "student"
             send_message(chat_id, f"📖 كتاب الطالب - أرسل رقم الصفحة ({STUDENT_MIN}-{STUDENT_MAX}):")
@@ -1193,7 +1195,8 @@ def webhook():
         # كتاب الأنشطة
         elif text == "✏️ كتاب الأنشطة":
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             user_book_choice[user_id] = "activity"
             send_message(chat_id, f"✏️ كتاب الأنشطة - أرسل رقم الصفحة ({ACTIVITY_MIN}-{ACTIVITY_MAX}):")
@@ -1201,7 +1204,8 @@ def webhook():
         # القواعد
         elif text == "📚 القواعد":
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             if GRAMMAR_RULES:
                 send_message(chat_id, "📚 **اختر القاعدة التي تريد دراستها:**", get_grammar_buttons())
@@ -1211,7 +1215,8 @@ def webhook():
         # تمارين
         elif text == "📝 تمارين":
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
         
@@ -1265,7 +1270,8 @@ def webhook():
         # معالجة رقم الصفحة
         elif text.isdigit():
             if not check_and_deduct_request(user_id):
-                send_message(chat_id, f"⚠️ **هذا المحتوى للمشتركين فقط!**\n💳 اشترك الآن للوصول إلى جميع المحتويات", parse_mode="Markdown")
+                remaining = get_remaining_requests(user_id)
+                send_message(chat_id, f"⚠️ **لقد انتهت طلباتك المجانية!**\n🎟️ رصيدك المتبقي: {remaining}\n💳 اشترك الآن بـ 50 ل.س فقط", parse_mode="Markdown")
                 return "OK"
             selected_book = user_book_choice.get(user_id)
             if selected_book == "student":
