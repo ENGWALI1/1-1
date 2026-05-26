@@ -24,12 +24,11 @@ if not TOKEN:
 URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469  # ضع معرفك هنا
 SYRIATEL_NUMBERS = ["15570270"]
-PRICES = {"1_month": 50}
 FREE_REQUESTS = 10
 
 # إعدادات GitHub
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')  # غيرها لاسم المستخدم/المشروع حقك
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')
 GITHUB_FILE = 'subscribers.json'
 
 # سرعات الصوت
@@ -69,13 +68,12 @@ def load_from_github():
 def save_to_github(data):
     """حفظ البيانات إلى GitHub"""
     if not GITHUB_TOKEN:
-        print("⚠️ GITHUB_TOKEN غير موجود")
+        print("⚠️ GitHub غير متاح، حفظ محلي مؤقت")
         return False
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     
-    # جلب الـ SHA للملف (مطلوب للتحديث)
     sha = None
     try:
         response = requests.get(url, headers=headers)
@@ -84,11 +82,9 @@ def save_to_github(data):
     except:
         pass
     
-    # تحويل البيانات إلى Base64
     content = json.dumps(data, ensure_ascii=False, indent=2)
     encoded = base64.b64encode(content.encode('utf-8')).decode('utf-8')
     
-    # إعداد البيانات للحفظ
     payload = {
         "message": f"Update subscribers - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "content": encoded,
@@ -112,17 +108,14 @@ def save_to_github(data):
 # ==================== دوال البيانات ====================
 
 def get_all_data():
-    """الحصول على جميع البيانات"""
     return load_from_github()
 
 def save_all_data(data):
-    """حفظ جميع البيانات"""
     return save_to_github(data)
 
-# ==================== دوال الاشتراك المصححة ====================
+# ==================== دوال الاشتراك ====================
 
 def is_subscribed(user_id):
-    """التحقق إذا كان المستخدم مشتركاً"""
     data = get_all_data()
     user_id_str = str(user_id)
     if user_id_str in data.get("subscriptions", {}):
@@ -143,12 +136,10 @@ def add_subscription(user_id):
     return True
 
 def load_pending():
-    """تحميل الطلبات المعلقة"""
     data = get_all_data()
     return data.get("pending_requests", {})
 
 def save_pending(pending):
-    """حفظ الطلبات المعلقة"""
     data = get_all_data()
     data["pending_requests"] = pending
     save_all_data(data)
@@ -187,6 +178,52 @@ def reject_request(invoice_id):
         save_pending(pending)
         return True, user_id
     return False, None
+
+def get_user_usage(user_id):
+    data = get_all_data()
+    return data.get("user_usage", {}).get(str(user_id), 0)
+
+def increment_user_usage(user_id):
+    data = get_all_data()
+    if "user_usage" not in data:
+        data["user_usage"] = {}
+    data["user_usage"][str(user_id)] = data["user_usage"].get(str(user_id), 0) + 1
+    save_all_data(data)
+
+def reset_user_usage(user_id):
+    data = get_all_data()
+    if "user_usage" in data:
+        data["user_usage"][str(user_id)] = 0
+        save_all_data(data)
+
+def check_and_deduct_request(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    if is_subscribed(user_id):
+        return True
+    used = get_user_usage(user_id)
+    if used >= FREE_REQUESTS:
+        return False
+    increment_user_usage(user_id)
+    return True
+
+def get_remaining_requests(user_id):
+    if user_id == ADMIN_ID or is_subscribed(user_id):
+        return "غير محدود"
+    used = get_user_usage(user_id)
+    remaining = FREE_REQUESTS - used
+    return max(0, remaining)
+
+def get_usage_message(user_id):
+    if user_id == ADMIN_ID:
+        return "👑 أنت المسؤول، لديك وصول غير محدود"
+    if is_subscribed(user_id):
+        return "✅ **مشترك نشط**\n🎉 وصول غير محدود لمدة 30 يوماً"
+    remaining = get_remaining_requests(user_id)
+    if remaining == 0:
+        return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك الآن بـ 50 ل.س فقط"
+    return f"📊 **الطلبات المجانية المتبقية:** {remaining} من {FREE_REQUESTS}"
+
 # ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "text": text, "protect_content": True}
@@ -250,7 +287,7 @@ def get_user_menu(user_id):
     else:
         return unsubscribed_menu
 
-# ==================== تحميل البيانات ====================
+# ==================== تحميل الكتب والملفات ====================
 
 def load_pages_from_zip(zip_path):
     pages = {}
@@ -760,21 +797,17 @@ print("="*60)
 print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
 
-# فحص إعدادات GitHub
 print("\n🔧 فحص إعدادات GitHub...")
 if GITHUB_TOKEN:
     print(f"   ✅ GITHUB_TOKEN موجود (الطول: {len(GITHUB_TOKEN)})")
 else:
-    print("   ❌ GITHUB_TOKEN غير موجود! أضفه في Environment Variables")
+    print("   ❌ GITHUB_TOKEN غير موجود!")
 print(f"   📁 GITHUB_REPO: {GITHUB_REPO}")
-print(f"   📄 GITHUB_FILE: {GITHUB_FILE}")
 
-# تحميل البيانات من GitHub
 print("\n📁 تحميل بيانات المشتركين من GitHub...")
 initial_data = get_all_data()
 print(f"   👥 المشتركين: {len(initial_data.get('subscriptions', {}))}")
 print(f"   📋 الطلبات المعلقة: {len(initial_data.get('pending_requests', {}))}")
-print(f"   📊 استخدامات المستخدمين: {len(initial_data.get('user_usage', {}))}")
 
 print("\n📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
@@ -830,7 +863,7 @@ def webhook():
         
         print(f"📨 Callback مستلم: {cb_data} من المستخدم {user_id}")
         
-        # قبول طلب اشتراك
+        # قبول طلب اشتراك (للمسؤول فقط)
         if cb_data.startswith("approve_"):
             invoice_id = cb_data.split("_")[1]
             
@@ -838,20 +871,17 @@ def webhook():
                 send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
                 return "OK"
             
-            pending = load_pending()
+            success, user_id_target = approve_request(invoice_id)
             
-            if invoice_id in pending:
-                user_to_sub = pending[invoice_id]["user_id"]
-                add_subscription(user_to_sub)
-                remove_pending_request(invoice_id)
+            if success:
                 edit_message(chat_id, msg_id, "✅ تم تفعيل الاشتراك بنجاح!")
-                send_message(user_to_sub, "🎉 **تم تفعيل اشتراكك بنجاح!**\n📅 صالح لمدة 30 يوماً")
-                print(f"✅ تم تفعيل اشتراك المستخدم {user_to_sub}")
+                send_message(user_id_target, "🎉 **تم تفعيل اشتراكك بنجاح!**\n📅 صالح لمدة 30 يوماً")
+                print(f"✅ المسؤول {user_id} قام بقبول طلب {invoice_id}")
             else:
                 edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود أو تم معالجته مسبقاً")
             return "OK"
         
-        # رفض طلب اشتراك
+        # رفض طلب اشتراك (للمسؤول فقط)
         if cb_data.startswith("reject_"):
             invoice_id = cb_data.split("_")[1]
             
@@ -859,13 +889,12 @@ def webhook():
                 send_message(chat_id, "❌ هذا الأمر للمسؤول فقط.")
                 return "OK"
             
-            pending = load_pending()
-            if invoice_id in pending:
-                user_to_sub = pending[invoice_id]["user_id"]
-                remove_pending_request(invoice_id)
+            success, user_id_target = reject_request(invoice_id)
+            
+            if success:
                 edit_message(chat_id, msg_id, "❌ تم رفض الطلب")
-                send_message(user_to_sub, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
-                print(f"✅ تم رفض طلب المستخدم {user_to_sub}")
+                send_message(user_id_target, "❌ **عذراً، لم يتم قبول طلب الاشتراك**")
+                print(f"❌ المسؤول {user_id} قام برفض طلب {invoice_id}")
             else:
                 edit_message(chat_id, msg_id, "❌ هذا الطلب غير موجود")
             return "OK"
@@ -1058,26 +1087,24 @@ def webhook():
         elif text == "📝 تمارين":
             send_message(chat_id, "📝 **اختر المستوى:**", get_level_buttons())
         
-        # معالجة رقم العملية (أرقام طويلة)
+        # معالجة رقم العملية (أرقام طويلة) - تسجيل فقط، لا قبول تلقائي
         elif text.isdigit() and len(text) >= 10:
             if is_subscribed(user_id):
                 send_message(chat_id, "✅ أنت مشترك بالفعل! لديك وصول غير محدود.")
                 return "OK"
             
-            invoice_id = str(random.randint(100000, 999999))
+            # إضافة طلب جديد (تسجيل فقط)
+            invoice_id = add_pending_request(
+                user_id=user_id,
+                username=msg['from'].get('username', ''),
+                first_name=msg['from'].get('first_name', ''),
+                transaction_id=text
+            )
             
-            pending = load_pending()
-            pending[invoice_id] = {
-                "user_id": user_id,
-                "username": msg['from'].get('username', ''),
-                "first_name": msg['from'].get('first_name', ''),
-                "transaction_id": text,
-                "created_at": datetime.now().isoformat()
-            }
-            save_pending(pending)
+            # تأكيد للمستخدم
+            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته من قبل المسؤول قريباً.", parse_mode="Markdown")
             
-            send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته قريباً.", parse_mode="Markdown")
-            
+            # إرسال للمسؤول مع أزرار القبول والرفض
             admin_msg = f"🔔 **طلب اشتراك جديد**\n"
             admin_msg += f"👤 {msg['from'].get('first_name', '')}\n"
             admin_msg += f"🆔 `{user_id}`\n"
