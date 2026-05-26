@@ -537,16 +537,58 @@ def format_translation(translation_lines):
 def format_exercises(exercises):
     if not exercises:
         return "لا توجد تمارين في هذه الصفحة"
+    
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
     for i, ex in enumerate(exercises, 1):
-        if isinstance(ex, dict):
+        # التمرين من نوع المحادثة (Speaking)
+        if isinstance(ex, dict) and ex.get('type') == 'speaking':
+            questions = ex.get('questions', [])
+            answers = ex.get('answers', [])
+            result += f"**🗣️ نشاط المحادثة {i}:**\n"
+            for j, q in enumerate(questions):
+                result += f"**سؤال {j+1}:** {q}\n"
+                if j < len(answers):
+                    result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
+                result += "\n"
+        
+        # التمرين من نوع الأسئلة (Questions)
+        elif isinstance(ex, dict) and ex.get('type') == 'questions':
+            text = ex.get('text', ex.get('question', f'سؤال {i}'))
+            answer = ex.get('answer', '---')
+            if isinstance(answer, list):
+                answer = ', '.join(str(a) for a in answer)
+            result += f"**{i}. {text}**\n✅ {answer}\n\n"
+        
+        # التمرين من نوع المزاوجة (Matching)
+        elif isinstance(ex, dict) and ex.get('type') == 'matching':
+            result += f"**🔗 تمرين المزاوجة {i}:**\n"
+            result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
+        
+        # التمرين من نوع الاستماع (Listening)
+        elif isinstance(ex, dict) and ex.get('type') == 'listening':
+            text = ex.get('text', ex.get('question', f'سؤال {i}'))
+            answer = ex.get('answer', '---')
+            result += f"**🎧 تمرين الاستماع {i}:**\n"
+            result += f"**السؤال:** {text}\n"
+            result += f"✅ **الإجابة:** {answer}\n\n"
+        
+        # التمرين العادي (قاموس عادي)
+        elif isinstance(ex, dict):
             question = ex.get('text') or ex.get('question') or f'سؤال {i}'
             answer = ex.get('answer') or ex.get('a') or '---'
             if isinstance(answer, list):
                 answer = ', '.join(str(a) for a in answer)
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
+        
+        # التمرين كسلسلة نصية
         elif isinstance(ex, str):
             result += f"**{i}. {ex[:200]}**\n\n"
+        
+        # أي نوع آخر
+        else:
+            result += f"**{i}. {str(ex)[:200]}**\n\n"
+    
     return result
 
 # ==================== دالة الصوت ====================
