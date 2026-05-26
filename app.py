@@ -7,6 +7,7 @@ import asyncio
 import random
 import base64
 import threading
+import time
 import edge_tts
 from flask import Flask, request
 import requests
@@ -39,6 +40,23 @@ VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
 user_book_choice = {}
 user_test_data = {}
 user_plan_choice = {}
+
+# ==================== إبقاء البوت نشطاً (Self-Ping) ====================
+
+def keep_alive():
+    """دالة لإبقاء البوت نشطاً عن طريق إرسال طلب لنفسه كل 4 دقائق"""
+    while True:
+        time.sleep(240)  # 4 دقائق
+        try:
+            response = requests.get("https://atwithali91-bot.onrender.com")
+            print(f"🔄 Self-ping at {datetime.now().strftime('%H:%M:%S')} - Status: {response.status_code}")
+        except Exception as e:
+            print(f"⚠️ Self-ping error: {e}")
+
+# بدء الـ Ping التلقائي في خلفية منفصلة
+self_ping_thread = threading.Thread(target=keep_alive, daemon=True)
+self_ping_thread.start()
+print("✅ تم تفعيل خاصية إبقاء البوت نشطاً (Self-Ping)")
 
 # ==================== دوال GitHub ====================
 
