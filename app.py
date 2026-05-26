@@ -26,7 +26,7 @@ URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 1662780469
 SYRIATEL_NUMBERS = ["15570270"]
 PRICES = {"1_month": 50, "3_months": 100, "6_months": 150}
-FREE_REQUESTS = 10  # عدد الطلبات المجانية لغير المشتركين
+FREE_REQUESTS = 10
 
 # إعدادات GitHub
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
@@ -595,7 +595,6 @@ def format_exercises(exercises):
     result = "📝 **حلول التمارين**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, ex in enumerate(exercises, 1):
-        # التمرين من نوع المحادثة (Speaking)
         if isinstance(ex, dict) and ex.get('type') == 'speaking':
             questions = ex.get('questions', [])
             answers = ex.get('answers', [])
@@ -606,7 +605,6 @@ def format_exercises(exercises):
                     result += f"✅ **نموذج للإجابة:** {answers[j]}\n"
                 result += "\n"
         
-        # التمرين من نوع الأسئلة (Questions)
         elif isinstance(ex, dict) and ex.get('type') == 'questions':
             text = ex.get('text', ex.get('question', f'سؤال {i}'))
             answer = ex.get('answer', '---')
@@ -614,12 +612,10 @@ def format_exercises(exercises):
                 answer = ', '.join(str(a) for a in answer)
             result += f"**{i}. {text}**\n✅ {answer}\n\n"
         
-        # التمرين من نوع المزاوجة (Matching)
         elif isinstance(ex, dict) and ex.get('type') == 'matching':
             result += f"**🔗 تمرين المزاوجة {i}:**\n"
             result += f"✅ **الحل:** {ex.get('answer', '---')}\n\n"
         
-        # التمرين من نوع الاستماع (Listening)
         elif isinstance(ex, dict) and ex.get('type') == 'listening':
             text = ex.get('text', ex.get('question', f'سؤال {i}'))
             answer = ex.get('answer', '---')
@@ -627,7 +623,6 @@ def format_exercises(exercises):
             result += f"**السؤال:** {text}\n"
             result += f"✅ **الإجابة:** {answer}\n\n"
         
-        # التمرين العادي (قاموس عادي)
         elif isinstance(ex, dict):
             question = ex.get('text') or ex.get('question') or f'سؤال {i}'
             answer = ex.get('answer') or ex.get('a') or '---'
@@ -635,11 +630,9 @@ def format_exercises(exercises):
                 answer = ', '.join(str(a) for a in answer)
             result += f"**{i}. {question}**\n✅ {answer}\n\n"
         
-        # التمرين كسلسلة نصية
         elif isinstance(ex, str):
             result += f"**{i}. {ex[:200]}**\n\n"
         
-        # أي نوع آخر
         else:
             result += f"**{i}. {str(ex)[:200]}**\n\n"
     
@@ -889,7 +882,6 @@ print("="*60)
 print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
 
-# فحص إعدادات GitHub
 print("\n🔧 إعدادات GitHub:")
 if GITHUB_TOKEN:
     print(f"   ✅ GITHUB_TOKEN: موجود (الطول: {len(GITHUB_TOKEN)})")
@@ -910,7 +902,6 @@ GRAMMAR_RULES = load_grammar_rules()
 print("\n📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
-# تحميل البيانات من GitHub
 print("\n📁 تحميل بيانات المشتركين من GitHub...")
 initial_data = load_data_from_github()
 print(f"   👥 المشتركين: {len(initial_data.get('subs', {}))}")
@@ -1128,31 +1119,35 @@ def webhook():
                                get_page_buttons(book_type, page_num, mode, min_page, max_page))
                     
                 elif action == "translated":
-    translation = page.get("content_line_by_line", [])
-    num_parts, translation_parts = format_translation(translation)
-    
-    if num_parts is None:
-        # لا توجد ترجمة
-        edit_message(chat_id, msg_id, 
-                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
-                   get_page_buttons(book_type, page_num, "original", min_page, max_page))
-    else:
-        mode = "translated"
-        
-        # إرسال جميع أجزاء الترجمة (بدون أزرار)
-        for i, part in enumerate(translation_parts):
-            if i == 0:
-                # أول جزء: تعديل الرسالة الأصلية
-                edit_message(chat_id, msg_id, 
-                           f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{part}", 
-                           None)  # بدون أزرار
-            else:
-                # الأجزاء التالية: إرسال كرسائل جديدة
-                send_message(chat_id, part)
-        
-        # إرسال رسالة أخيرة تحتوي على الأزرار فقط
-        send_message(chat_id, "🔽 **اختر الإجراء المناسب:**", 
-                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                    translation = page.get("content_line_by_line", [])
+                    num_parts, translation_parts = format_translation(translation)
+                    
+                    if num_parts is None:
+                        edit_message(chat_id, msg_id, 
+                                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
+                                   get_page_buttons(book_type, page_num, "original", min_page, max_page))
+                    else:
+                        mode = "translated"
+                        
+                        # إرسال جميع أجزاء الترجمة (بدون أزرار)
+                        for i, part in enumerate(translation_parts):
+                            if i == 0:
+                                edit_message(chat_id, msg_id, 
+                                           f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{part}", 
+                                           None)
+                            else:
+                                send_message(chat_id, part)
+                        
+                        # إرسال رسالة أخيرة تحتوي على الأزرار فقط
+                        send_message(chat_id, "🔽 **اختر الإجراء المناسب:**", 
+                                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
+                    
+                elif action == "solved":
+                    content = format_exercises(page.get("exercises", []))
+                    mode = "solved"
+                    edit_message(chat_id, msg_id, 
+                               f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
+                               get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     # معالجة الرسائل النصية
@@ -1232,7 +1227,6 @@ def webhook():
             
             plan_data = user_plan_choice.get(user_id, {"plan": "1_month", "amount": 50})
             
-            # إضافة طلب جديد
             invoice_id = add_pending_request(
                 user_id=user_id,
                 username=msg['from'].get('username', ''),
@@ -1242,10 +1236,8 @@ def webhook():
                 transaction_id=text
             )
             
-            # تأكيد للمستخدم
             send_message(chat_id, f"✅ **تم استلام طلبك بنجاح!**\n📌 رقم الطلب: `{invoice_id}`\n⏳ سيتم مراجعته من قبل المسؤول قريباً.", parse_mode="Markdown")
             
-            # إرسال للمسؤول
             plan_names = {"1_month": "شهر", "3_months": "3 أشهر", "6_months": "6 أشهر"}
             admin_msg = f"🔔 **طلب اشتراك جديد**\n"
             admin_msg += f"👤 {msg['from'].get('first_name', '')}\n"
@@ -1265,7 +1257,6 @@ def webhook():
             }
             send_message(ADMIN_ID, admin_msg, admin_keyboard, "Markdown")
             
-            # تنظيف بيانات المستخدم
             if user_id in user_plan_choice:
                 del user_plan_choice[user_id]
             
