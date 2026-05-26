@@ -5,6 +5,7 @@ import shutil
 import re
 import asyncio
 import random
+import base64
 import edge_tts
 from flask import Flask, request
 import requests
@@ -25,26 +26,89 @@ ADMIN_ID = 1662780469  # ضع معرفك هنا
 SYRIATEL_NUMBERS = ["15570270"]
 FREE_REQUESTS = 10
 
+# إعدادات GitHub
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'withali91/withali91_bot')
+GITHUB_FILE = 'subscribers.json'
+
 # سرعات الصوت
 VOICE_RATES = {"بطيء": "-30%", "عادي": "-15%", "سريع": "+1%"}
 
 user_book_choice = {}
 user_test_data = {}
 
-# ==================== نظام الاشتراك البسيط ====================
-
-DATA_FILE = "data.json"
+# ==================== دوال GitHub ====================
 
 def load_data():
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except:
+    """تحميل البيانات من GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ GITHUB_TOKEN غير موجود")
         return {"subs": {}, "pending": [], "usage": {}}
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            content = response.json().get('content', '')
+            if content:
+                decoded = base64.b64decode(content).decode('utf-8')
+                return json.loads(decoded)
+        elif response.status_code == 404:
+            print("📁 ملف subscribers.json غير موجود، سيتم إنشاؤه")
+            default = {"subs": {}, "pending": [], "usage": {}}
+            save_data(default)
+            return default
+    except Exception as e:
+        print(f"⚠️ خطأ في التحميل: {e}")
+    
+    return {"subs": {}, "pending": [], "usage": {}}
 
 def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """حفظ البيانات إلى GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ GITHUB_TOKEN غير موجود")
+        return False
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    
+    # جلب الـ SHA للملف
+    sha = None
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            sha = response.json().get('sha')
+    except:
+        pass
+    
+    # تحويل البيانات إلى Base64
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    encoded = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    
+    # إعداد البيانات للحفظ
+    payload = {
+        "message": f"Update data - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "content": encoded,
+        "branch": "main"
+    }
+    if sha:
+        payload["sha"] = sha
+    
+    try:
+        response = requests.put(url, headers=headers, json=payload)
+        if response.status_code in [200, 201]:
+            print(f"✅ تم الحفظ على GitHub بنجاح")
+            return True
+        else:
+            print(f"⚠️ فشل الحفظ: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"⚠️ خطأ في الحفظ: {e}")
+        return False
+
+# ==================== نظام الاشتراك ====================
 
 def is_subscribed(user_id):
     data = load_data()
@@ -707,6 +771,15 @@ print("="*60)
 print("🚀 بدء تشغيل بوت تلغرام")
 print("="*60)
 
+# فحص إعدادات GitHub
+print("\n🔧 إعدادات GitHub:")
+if GITHUB_TOKEN:
+    print(f"   ✅ GITHUB_TOKEN: موجود (الطول: {len(GITHUB_TOKEN)})")
+else:
+    print("   ❌ GITHUB_TOKEN: غير موجود")
+print(f"   📁 GITHUB_REPO: {GITHUB_REPO}")
+print(f"   📄 GITHUB_FILE: {GITHUB_FILE}")
+
 print("\n📚 تحميل كتاب الطالب...")
 STUDENT_PAGES = load_pages_from_zip("student_pages.zip")
 
@@ -719,10 +792,11 @@ GRAMMAR_RULES = load_grammar_rules()
 print("\n📚 تحميل الاختبارات...")
 TESTS = load_tests()
 
-# تحميل البيانات
-data = load_data()
-print(f"\n📁 بيانات المشتركين: {len(data.get('subs', {}))} مشترك")
-print(f"📋 طلبات معلقة: {len(data.get('pending', []))}")
+# تحميل البيانات من GitHub
+print("\n📁 تحميل بيانات المشتركين من GitHub...")
+initial_data = load_data()
+print(f"   👥 المشتركين: {len(initial_data.get('subs', {}))}")
+print(f"   📋 الطلبات المعلقة: {len(initial_data.get('pending', []))}")
 
 STUDENT_LIST = sorted([int(p) for p in STUDENT_PAGES.keys()])
 ACTIVITY_LIST = sorted([int(p) for p in ACTIVITY_PAGES.keys()])
@@ -739,7 +813,7 @@ print(f"📖 كتاب الطالب: {len(STUDENT_PAGES)} صفحة")
 print(f"✏️ كتاب الأنشطة: {len(ACTIVITY_PAGES)} صفحة")
 print(f"📚 القواعد: {len(GRAMMAR_RULES)} قاعدة")
 print(f"📝 الاختبارات: {len(TESTS)} اختبار")
-print(f"👥 المشتركين: {len(data.get('subs', {}))}")
+print(f"👥 المشتركين: {len(initial_data.get('subs', {}))}")
 print(f"👑 معرف المسؤول: {ADMIN_ID}")
 print("="*60)
 print("✅ البوت جاهز للعمل!")
