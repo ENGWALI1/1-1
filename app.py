@@ -1037,20 +1037,46 @@ def webhook():
             send_message(chat_id, "🎉 مرحباً بك! اختر من القائمة 👇", get_user_menu(chat_id))
             return "OK"
         
+        # ==================== معالجة القواعد (مع تقسيم النص الطويل) ====================
         if cb_data.startswith("grammar_"):
             rule_name = cb_data.replace("grammar_", "")
             if rule_name in GRAMMAR_RULES:
                 content = GRAMMAR_RULES[rule_name]
-                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع", "callback_data": "back_to_grammar"}]]}
-                if len(content) <= 4000:
-                    send_message(chat_id, content, keyboard)
+                
+                # تقسيم النص الطويل بنفس طريقة الترجمة
+                MAX_LENGTH = 3800
+                parts = []
+                current_part = f"📖 **القاعدة: {rule_name.replace('_', ' ').title()}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                current_length = len(current_part)
+                
+                # تقسيم المحتوى إلى أجزاء
+                lines = content.split('\n')
+                for line in lines:
+                    if current_length + len(line) + 1 > MAX_LENGTH:
+                        parts.append(current_part)
+                        current_part = f"📖 **القاعدة: {rule_name.replace('_', ' ').title()} (تابع)**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        current_length = len(current_part)
+                    current_part += line + '\n'
+                    current_length += len(line) + 1
+                
+                if current_part:
+                    parts.append(current_part)
+                
+                # الأزرار (رجوع للقائمة)
+                keyboard = {"inline_keyboard": [[{"text": "🔙 رجوع للقائمة", "callback_data": "back_to_grammar"}]]}
+                
+                if len(parts) == 1:
+                    # نص قصير: نرسله مع الأزرار مباشرة
+                    send_message(chat_id, parts[0], keyboard)
                 else:
-                    parts = [content[i:i+4000] for i in range(0, len(content), 4000)]
+                    # نص طويل: نرسل الأجزاء بدون أزرار، ثم رسالة منفصلة بالأزرار
                     for i, part in enumerate(parts):
                         if i == 0:
-                            send_message(chat_id, part, keyboard)
+                            send_message(chat_id, part, None)
                         else:
                             send_message(chat_id, part)
+                    # إرسال رسالة أخيرة تحتوي على الأزرار فقط
+                    send_message(chat_id, "🔽 **للعودة إلى قائمة القواعد:**", keyboard)
             else:
                 send_message(chat_id, f"❌ القاعدة غير موجودة")
             return "OK"
