@@ -119,7 +119,10 @@ def save_all_data(data):
     """حفظ جميع البيانات"""
     return save_to_github(data)
 
+# ==================== دوال الاشتراك المصححة ====================
+
 def is_subscribed(user_id):
+    """التحقق إذا كان المستخدم مشتركاً"""
     data = get_all_data()
     user_id_str = str(user_id)
     if user_id_str in data.get("subscriptions", {}):
@@ -128,6 +131,7 @@ def is_subscribed(user_id):
     return False
 
 def add_subscription(user_id):
+    """إضافة مستخدم كـ مشترك (للمسؤول فقط)"""
     data = get_all_data()
     expiry = (datetime.now() + timedelta(days=30)).isoformat()
     data["subscriptions"][str(user_id)] = {
@@ -138,66 +142,51 @@ def add_subscription(user_id):
     print(f"✅ تم إضافة اشتراك للمستخدم {user_id}")
     return True
 
-def get_user_usage(user_id):
-    data = get_all_data()
-    return data.get("user_usage", {}).get(str(user_id), 0)
-
-def increment_user_usage(user_id):
-    data = get_all_data()
-    if "user_usage" not in data:
-        data["user_usage"] = {}
-    data["user_usage"][str(user_id)] = data["user_usage"].get(str(user_id), 0) + 1
-    save_all_data(data)
-
-def reset_user_usage(user_id):
-    data = get_all_data()
-    if "user_usage" in data:
-        data["user_usage"][str(user_id)] = 0
-        save_all_data(data)
-
 def load_pending():
+    """تحميل الطلبات المعلقة"""
     data = get_all_data()
     return data.get("pending_requests", {})
 
 def save_pending(pending):
+    """حفظ الطلبات المعلقة"""
     data = get_all_data()
     data["pending_requests"] = pending
     save_all_data(data)
 
-def remove_pending_request(invoice_id):
-    data = get_all_data()
-    if invoice_id in data.get("pending_requests", {}):
-        del data["pending_requests"][invoice_id]
-        save_all_data(data)
+def add_pending_request(user_id, username, first_name, transaction_id):
+    """إضافة طلب اشتراك جديد (للمستخدم العادي)"""
+    pending = load_pending()
+    invoice_id = str(random.randint(100000, 999999))
+    pending[invoice_id] = {
+        "user_id": user_id,
+        "username": username,
+        "first_name": first_name,
+        "transaction_id": transaction_id,
+        "created_at": datetime.now().isoformat()
+    }
+    save_pending(pending)
+    return invoice_id
 
-def check_and_deduct_request(user_id):
-    if user_id == ADMIN_ID:
-        return True
-    if is_subscribed(user_id):
-        return True
-    used = get_user_usage(user_id)
-    if used >= FREE_REQUESTS:
-        return False
-    increment_user_usage(user_id)
-    return True
+def approve_request(invoice_id):
+    """قبول طلب (للمسؤول فقط)"""
+    pending = load_pending()
+    if invoice_id in pending:
+        user_id = pending[invoice_id]["user_id"]
+        add_subscription(user_id)
+        del pending[invoice_id]
+        save_pending(pending)
+        return True, user_id
+    return False, None
 
-def get_remaining_requests(user_id):
-    if user_id == ADMIN_ID or is_subscribed(user_id):
-        return "غير محدود"
-    used = get_user_usage(user_id)
-    remaining = FREE_REQUESTS - used
-    return max(0, remaining)
-
-def get_usage_message(user_id):
-    if user_id == ADMIN_ID:
-        return "👑 أنت المسؤول، لديك وصول غير محدود"
-    if is_subscribed(user_id):
-        return "✅ **مشترك نشط**\n🎉 وصول غير محدود لمدة 30 يوماً"
-    remaining = get_remaining_requests(user_id)
-    if remaining == 0:
-        return f"⚠️ **لقد انتهت طلباتك المجانية!**\n💳 اشترك الآن بـ 50 ل.س فقط"
-    return f"📊 **الطلبات المجانية المتبقية:** {remaining} من {FREE_REQUESTS}"
-
+def reject_request(invoice_id):
+    """رفض طلب (للمسؤول فقط)"""
+    pending = load_pending()
+    if invoice_id in pending:
+        user_id = pending[invoice_id]["user_id"]
+        del pending[invoice_id]
+        save_pending(pending)
+        return True, user_id
+    return False, None
 # ==================== دوال مساعدة ====================
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     data = {"chat_id": chat_id, "text": text, "protect_content": True}
