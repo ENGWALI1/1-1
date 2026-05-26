@@ -1128,27 +1128,31 @@ def webhook():
                                get_page_buttons(book_type, page_num, mode, min_page, max_page))
                     
                 elif action == "translated":
-                    translation = page.get("content_line_by_line", [])
-                    num_parts, translation_parts = format_translation(translation)
-                    
-                    if num_parts is None:
-                        edit_message(chat_id, msg_id, 
-                                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
-                                   get_page_buttons(book_type, page_num, "original", min_page, max_page))
-                    else:
-                        mode = "translated"
-                        edit_message(chat_id, msg_id, 
-                                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
-                                   get_page_buttons(book_type, page_num, mode, min_page, max_page))
-                        for part in translation_parts[1:]:
-                            send_message(chat_id, part)
-                    
-                elif action == "solved":
-                    content = format_exercises(page.get("exercises", []))
-                    mode = "solved"
-                    edit_message(chat_id, msg_id, 
-                               f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{content}", 
-                               get_page_buttons(book_type, page_num, mode, min_page, max_page))
+    translation = page.get("content_line_by_line", [])
+    num_parts, translation_parts = format_translation(translation)
+    
+    if num_parts is None:
+        # لا توجد ترجمة
+        edit_message(chat_id, msg_id, 
+                   f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{translation_parts[0]}", 
+                   get_page_buttons(book_type, page_num, "original", min_page, max_page))
+    else:
+        mode = "translated"
+        
+        # إرسال جميع أجزاء الترجمة (بدون أزرار)
+        for i, part in enumerate(translation_parts):
+            if i == 0:
+                # أول جزء: تعديل الرسالة الأصلية
+                edit_message(chat_id, msg_id, 
+                           f"📖 **{title}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n{part}", 
+                           None)  # بدون أزرار
+            else:
+                # الأجزاء التالية: إرسال كرسائل جديدة
+                send_message(chat_id, part)
+        
+        # إرسال رسالة أخيرة تحتوي على الأزرار فقط
+        send_message(chat_id, "🔽 **اختر الإجراء المناسب:**", 
+                    get_page_buttons(book_type, page_num, mode, min_page, max_page))
         return "OK"
     
     # معالجة الرسائل النصية
